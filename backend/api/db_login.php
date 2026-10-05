@@ -36,6 +36,12 @@ if (!empty($identifier) && !empty($data->password)) {
                 // Quitamos el hash antes de devolver
                 unset($user['contrasena']);
 
+                // Contar turnos pendientes futuros o en estado pendiente
+                $stmt_pend = $db->prepare("SELECT COUNT(*) FROM turnos WHERE paciente_id = :pid AND estado = 'pendiente' AND fecha >= CURDATE()");
+                $stmt_pend->execute([':pid' => $user['id']]);
+                $turnosPendientes = intval($stmt_pend->fetchColumn());
+                $user['turnos_pendientes'] = $turnosPendientes;
+
                 http_response_code(200);
                 echo json_encode(array(
                     "status" => "success",

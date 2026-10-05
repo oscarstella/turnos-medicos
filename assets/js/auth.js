@@ -1,5 +1,5 @@
-// Determinar a dónde redirigir según el rol del usuario
-function redirigirSegunRol(u, urlParams) {
+// Determinar a dónde redirigir según el rol del usuario y sus turnos pendientes
+async function redirigirSegunRol(u, urlParams) {
     if (urlParams.get('redirect') === 'agendar' && urlParams.get('medico_id')) {
         window.location.href = 'agendar.php?medico_id=' + urlParams.get('medico_id');
         return;
@@ -7,8 +7,42 @@ function redirigirSegunRol(u, urlParams) {
     const esAdmin = ['superadmin', 'admin', 'recepcionista'].includes(u.rol);
     if (esAdmin) {
         window.location.href = 'dashboard.php';
-    } else {
-        // Los pacientes y clientes van a la página principal de la clínica
+        return;
+    }
+
+    // Para pacientes: verificar si tiene turnos pendientes
+    try {
+        if (typeof u.turnos_pendientes !== 'undefined' && u.turnos_pendientes !== null) {
+            if (parseInt(u.turnos_pendientes) > 0) {
+                window.location.href = 'dashboard.php';
+                return;
+            } else {
+                window.location.href = 'index.php';
+                return;
+            }
+        }
+
+        // Si no viene calculado en el objeto, consultar get_mis_turnos.php
+        const fuid = u.firebase_uid || u.uid || '';
+        const email = u.email || '';
+        const resp = await fetch(`backend/api/get_mis_turnos.php?firebase_uid=${encodeURIComponent(fuid)}&email=${encodeURIComponent(email)}`, {
+            credentials: 'same-origin'
+        });
+        const turnos = await resp.json().catch(() => []);
+        const hoy = new Date().toISOString().split('T')[0];
+        const tienePendientes = Array.isArray(turnos) && turnos.some(t => {
+            const fechaValida = t.fecha >= hoy;
+            const estadoValido = (t.estado || '').toLowerCase() === 'pendiente';
+            return fechaValida && estadoValido;
+        });
+
+        if (tienePendientes) {
+            window.location.href = 'dashboard.php';
+        } else {
+            window.location.href = 'index.php';
+        }
+    } catch (e) {
+        // Fallback por defecto a la búsqueda de turnos
         window.location.href = 'index.php';
     }
 }

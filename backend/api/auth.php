@@ -68,13 +68,19 @@ if(!empty($data->firebase_uid) && !empty($data->email)) {
             $_SESSION['rol'] = $row['rol'];
             $_SESSION['nombre'] = $row['nombre'];
 
+            // Contar turnos pendientes del paciente
+            $stmt_pend = $db->prepare("SELECT COUNT(*) FROM turnos WHERE paciente_id = :pid AND estado = 'pendiente' AND fecha >= CURDATE()");
+            $stmt_pend->execute([':pid' => $row['id']]);
+            $turnosPendientes = intval($stmt_pend->fetchColumn());
+
             http_response_code(200);
             echo json_encode(array(
                 "message" => "Login exitoso.",
                 "user" => array(
                     "id" => $row['id'],
                     "nombre" => $row['nombre'],
-                    "rol" => $row['rol']
+                    "rol" => $row['rol'],
+                    "turnos_pendientes" => $turnosPendientes
                 )
             ));
         } else {
@@ -113,7 +119,8 @@ if(!empty($data->firebase_uid) && !empty($data->email)) {
                     "user" => array(
                         "id" => $new_id,
                         "nombre" => $nombre,
-                        "rol" => 'paciente'
+                        "rol" => 'paciente',
+                        "turnos_pendientes" => 0
                     )
                 ));
             } else {
