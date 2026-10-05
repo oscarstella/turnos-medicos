@@ -9,17 +9,20 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Login Page Styling coherente con el resto del sistema */
+/* Background Styling coherente con el resto del sistema */
 .login-bg {
   min-height: 100vh;
   background: linear-gradient(135deg, #eef2f7 0%, #dbe4ee 50%, #cad8e8 100%);
+}
+[data-bs-theme="dark"] .login-bg {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+}
+
+.login-page-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px 15px;
-}
-[data-bs-theme="dark"] .login-bg {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
 }
 
 .glass-card {

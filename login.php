@@ -13,7 +13,7 @@
     <!-- Custom CSS con Cache Busting automático -->
     <link href="assets/css/style.css?v=<?php echo filemtime('assets/css/style.css'); ?>" rel="stylesheet">
 </head>
-<body class="login-bg min-vh-100">
+<body class="login-bg min-vh-100 login-page-wrapper">
     
     <!-- Theme Toggle -->
     <div class="position-absolute top-0 end-0 p-3" style="z-index: 10;">

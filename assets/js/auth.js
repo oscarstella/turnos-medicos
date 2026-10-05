@@ -1,3 +1,18 @@
+// Determinar a dónde redirigir según el rol del usuario
+function redirigirSegunRol(u, urlParams) {
+    if (urlParams.get('redirect') === 'agendar' && urlParams.get('medico_id')) {
+        window.location.href = 'agendar.php?medico_id=' + urlParams.get('medico_id');
+        return;
+    }
+    const esAdmin = ['superadmin', 'admin', 'recepcionista'].includes(u.rol);
+    if (esAdmin) {
+        window.location.href = 'dashboard.php';
+    } else {
+        // Los pacientes y clientes van a la página principal de la clínica
+        window.location.href = 'index.php';
+    }
+}
+
 // Si ya hay sesión activa guardada y no se solicitó logout explícito, redirigir
 (function checkExistingSession() {
     const userSaved = localStorage.getItem('user');
@@ -10,11 +25,7 @@
         try {
             const u = JSON.parse(userSaved);
             if (u && (u.email || u.id)) {
-                if (urlParams.get('redirect') === 'agendar' && urlParams.get('medico_id')) {
-                    window.location.href = 'agendar.php?medico_id=' + urlParams.get('medico_id');
-                } else {
-                    window.location.href = 'dashboard.php';
-                }
+                redirigirSegunRol(u, urlParams);
             }
         } catch(e) {}
     }
@@ -60,11 +71,7 @@ if (loginForm) {
             if (dbData.status === 'success' && dbData.user) {
                 localStorage.setItem('user', JSON.stringify(dbData.user));
                 const urlParams = new URLSearchParams(window.location.search);
-                if (urlParams.get('redirect') === 'agendar' && urlParams.get('medico_id')) {
-                    window.location.href = 'agendar.php?medico_id=' + urlParams.get('medico_id');
-                } else {
-                    window.location.href = 'dashboard.php';
-                }
+                redirigirSegunRol(dbData.user, urlParams);
                 return;
             }
 
@@ -116,11 +123,7 @@ function handleBackendLogin(user, extraData = {}) {
             
             // Check for redirect params
             const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('redirect') === 'agendar' && urlParams.get('medico_id')) {
-                window.location.href = 'agendar.php?medico_id=' + urlParams.get('medico_id');
-            } else {
-                window.location.href = 'dashboard.php';
-            }
+            redirigirSegunRol(data.user, urlParams);
         } else {
             showError(data.message || 'Error al conectar con el servidor.');
         }

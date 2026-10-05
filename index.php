@@ -18,25 +18,24 @@
 </head>
 <body class="login-bg min-vh-100 pb-5">
     
-    <!-- Theme Toggle -->
-    <div class="position-absolute top-0 end-0 p-3" style="z-index: 10;">
-        <button class="btn btn-outline-secondary rounded-circle glass-card border-0" id="theme-toggle">
-            <i class="bi bi-moon-fill"></i>
-        </button>
-    </div>
-
     <!-- Header / Navbar estilo Glass -->
-    <header class="py-3 mb-5 shadow-sm" style="background: rgba(255, 255, 255, 0.5); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255, 255, 255, 0.2);">
-        <div class="container d-flex flex-wrap justify-content-between align-items-center">
-            <a href="index.php" class="d-flex align-items-center mb-2 mb-md-0 text-decoration-none" style="color: var(--bs-primary);">
+    <header class="py-3 mb-5 shadow-sm sticky-top" style="background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255, 255, 255, 0.3); z-index: 1020;">
+        <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <a href="index.php" class="d-flex align-items-center text-decoration-none" style="color: var(--bs-primary);">
                 <i class="bi bi-heart-pulse-fill fs-3 me-2"></i>
                 <span class="fs-4 fw-bold">Clínica Médica</span>
             </a>
             
-            <div class="text-end" id="header-auth-buttons">
-                <a href="login.php" class="btn btn-primary rounded-pill px-4 fw-semibold shadow-sm">
-                    <i class="bi bi-person-circle me-1"></i> Iniciar Sesión / Registrarse
-                </a>
+            <div class="d-flex align-items-center gap-2" id="header-right-area">
+                <div id="header-auth-buttons">
+                    <a href="login.php" class="btn btn-primary rounded-pill px-4 fw-semibold shadow-sm">
+                        <i class="bi bi-person-circle me-1"></i> Iniciar Sesión / Registrarse
+                    </a>
+                </div>
+                <!-- Theme Toggle integrado -->
+                <button class="btn btn-outline-secondary rounded-circle glass-card border-0 shadow-sm" id="theme-toggle" title="Cambiar tema">
+                    <i class="bi bi-moon-fill"></i>
+                </button>
             </div>
         </div>
     </header>
@@ -160,18 +159,25 @@
                 if (!authContainer || !user || !user.nombre) return;
 
                 const esAdmin = ['superadmin', 'admin', 'recepcionista'].includes(user.rol);
-                const textoBoton = esAdmin ? 'Panel de Administración' : 'Mis Turnos';
-                const iconoBoton = esAdmin ? 'bi-speedometer2' : 'bi-calendar2-check';
+                let adminBtnHtml = '';
+                if (esAdmin) {
+                    adminBtnHtml = `
+                        <a href="dashboard.php" class="btn btn-outline-primary rounded-pill px-3 py-2 fw-semibold shadow-sm d-inline-flex align-items-center gap-1" title="Ir al Panel Administrativo">
+                            <i class="bi bi-speedometer2"></i> <span class="d-none d-md-inline">Panel Admin</span>
+                        </a>
+                    `;
+                }
 
                 authContainer.innerHTML = `
-                    <div class="d-flex align-items-center gap-2 justify-content-end">
+                    <div class="d-flex align-items-center gap-2 justify-content-end flex-wrap">
                         <span class="text-muted d-none d-sm-inline small">
                             <i class="bi bi-person-check-fill text-success me-1"></i>
                             Hola, <strong>${user.nombre}</strong>
                         </span>
                         <a href="dashboard.php" class="btn btn-primary rounded-pill px-3 py-2 fw-semibold shadow-sm d-inline-flex align-items-center gap-1">
-                            <i class="bi ${iconoBoton}"></i> <span>${textoBoton}</span>
+                            <i class="bi bi-calendar2-check"></i> <span>Mis Turnos</span>
                         </a>
+                        ${adminBtnHtml}
                         <button type="button" class="btn btn-outline-secondary rounded-pill px-3 py-2 fw-semibold btn-sm" onclick="cerrarSesionHeader()" title="Cerrar sesión">
                             <i class="bi bi-box-arrow-right"></i>
                         </button>
