@@ -13,34 +13,29 @@
     <!-- Custom CSS con Cache Busting automático -->
     <link href="assets/css/style.css?v=<?php echo filemtime('assets/css/style.css'); ?>" rel="stylesheet">
 </head>
-<body class="login-bg d-flex align-items-center justify-content-center min-vh-100 position-relative py-5">
+<body class="login-bg min-vh-100">
     
-    <!-- Esferas líquidas animadas de fondo (Liquid Glow Orbs) -->
-    <div class="liquid-shape liquid-shape-1"></div>
-    <div class="liquid-shape liquid-shape-2"></div>
-    <div class="liquid-shape liquid-shape-3"></div>
-
     <!-- Theme Toggle -->
     <div class="position-absolute top-0 end-0 p-3" style="z-index: 10;">
-        <button class="btn btn-outline-light rounded-circle border-0 shadow-sm" id="theme-toggle" style="background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);">
-            <i class="bi bi-moon-fill text-white"></i>
+        <button class="btn btn-outline-secondary rounded-circle glass-card border-0 shadow-sm" id="theme-toggle">
+            <i class="bi bi-moon-fill"></i>
         </button>
     </div>
 
-    <main class="form-signin w-100 m-auto text-center">
-        <div class="card liquid-glass-card border-0">
+    <main class="form-signin text-center">
+        <div class="card glass-card border-0 shadow">
             <div class="card-body p-4 p-md-5">
                 
-                <!-- Badge Circular con Inicial / Icono de la animación líquida -->
-                <div class="liquid-avatar-badge mx-auto">
-                    <i class="bi bi-heart-pulse-fill"></i>
+                <!-- Logo o Icono Principal de la Clínica -->
+                <div class="mb-3 text-primary">
+                    <i class="bi bi-heart-pulse-fill" style="font-size: 2.8rem;"></i>
                 </div>
 
-                <h1 class="h3 mb-1 fw-bold text-white">Bienvenido</h1>
-                <p class="text-white-50 mb-4 small">Ingresa o crea tu cuenta para tus turnos</p>
+                <h1 class="h3 mb-1 fw-bold">Clínica Médica</h1>
+                <p class="text-muted mb-4 small">Ingresa a tu cuenta para gestionar tus turnos</p>
 
-                <!-- Tabs Login / Registro estilo Liquid Pills -->
-                <ul class="nav liquid-pills mb-4 justify-content-center mx-auto" id="pills-tab" role="tablist">
+                <!-- Tabs Login / Registro acordes al sistema -->
+                <ul class="nav login-pills mb-4 justify-content-center mx-auto" id="pills-tab" role="tablist">
                   <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="pills-login-tab" data-bs-toggle="pill" data-bs-target="#pills-login" type="button" role="tab">Iniciar Sesión</button>
                   </li>
@@ -55,16 +50,16 @@
                         <form id="login-form">
                             <div class="form-floating mb-3 text-start">
                                 <input type="text" class="form-control" id="login-identifier" placeholder="DNI o Email" required>
-                                <label for="login-identifier"><i class="bi bi-person-badge me-2"></i>DNI o Email</label>
+                                <label for="login-identifier"><i class="bi bi-person-badge me-2 text-primary"></i>DNI o Email</label>
                             </div>
                             <div class="form-floating mb-3 text-start">
                                 <input type="password" class="form-control" id="login-password" placeholder="Contraseña" required>
-                                <label for="login-password"><i class="bi bi-lock me-2"></i>Contraseña</label>
+                                <label for="login-password"><i class="bi bi-lock me-2 text-primary"></i>Contraseña</label>
                             </div>
 
-                            <button class="w-100 btn btn-lg btn-liquid-primary mt-2" type="submit">Iniciar Sesión</button>
+                            <button class="w-100 btn btn-lg btn-primary rounded-pill fw-semibold shadow-sm mt-2" type="submit">Iniciar Sesión</button>
                             <div class="mt-3 text-center">
-                                <a href="#" id="forgot-password-link" class="text-info text-decoration-none small">¿Olvidaste tu contraseña?</a>
+                                <a href="#" id="forgot-password-link" class="text-decoration-none small">¿Olvidaste tu contraseña?</a>
                             </div>
                         </form>
                     </div>
@@ -72,7 +67,7 @@
                     <!-- REGISTRO TAB -->
                     <div class="tab-pane fade" id="pills-register" role="tabpanel">
                         <form id="register-form">
-                            <div class="row g-2">
+                            <div class="row g-2 text-start">
                                 <div class="col-md-6 form-floating mb-2">
                                     <input type="text" class="form-control" id="reg-nombre" placeholder="Nombre" required>
                                     <label for="reg-nombre">Nombre</label>
@@ -82,7 +77,7 @@
                                     <label for="reg-apellido">Apellido</label>
                                 </div>
                             </div>
-                            <div class="row g-2">
+                            <div class="row g-2 text-start">
                                 <div class="col-md-6 form-floating mb-2">
                                     <input type="number" class="form-control" id="reg-dni" placeholder="DNI sin puntos" required>
                                     <label for="reg-dni">DNI</label>
@@ -92,53 +87,53 @@
                                     <label for="reg-fecha-nac">Fecha Nac.</label>
                                 </div>
                             </div>
-                            <div class="form-floating mb-2">
+                            <div class="form-floating mb-2 text-start">
                                 <input type="tel" class="form-control" id="reg-telefono" placeholder="WhatsApp / Teléfono" required>
                                 <label for="reg-telefono"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono</label>
                             </div>
-                            <div class="row g-2 mb-2">
-                                <div class="col-md-6 text-start">
-                                    <label class="form-label small text-muted mb-1 ps-1">Cobertura Médica</label>
-                                    <select class="form-select" id="reg-obra-social">
+                            <div class="row g-2 mb-2 text-start">
+                                <div class="col-md-6">
+                                    <label class="form-label small text-muted mb-1 ps-1 fw-semibold">Cobertura Médica</label>
+                                    <select class="form-select py-2" id="reg-obra-social">
                                         <option value="">Particular / Sin Obra Social</option>
                                     </select>
                                 </div>
-                                <div class="col-md-6 text-start">
-                                    <label class="form-label small text-muted mb-1 ps-1">Plan</label>
-                                    <select class="form-select" id="reg-plan" disabled>
+                                <div class="col-md-6">
+                                    <label class="form-label small text-muted mb-1 ps-1 fw-semibold">Plan</label>
+                                    <select class="form-select py-2" id="reg-plan" disabled>
                                         <option value="">Selecciona cobertura...</option>
                                     </select>
                                 </div>
                             </div>
-                            <div class="form-floating mb-2">
+                            <div class="form-floating mb-2 text-start">
                                 <input type="email" class="form-control" id="reg-email" placeholder="nombre@ejemplo.com" required>
-                                <label for="reg-email"><i class="bi bi-envelope me-2"></i>Email</label>
+                                <label for="reg-email"><i class="bi bi-envelope me-2 text-primary"></i>Email</label>
                             </div>
-                            <div class="form-floating mb-3">
+                            <div class="form-floating mb-3 text-start">
                                 <input type="password" class="form-control" id="reg-password" placeholder="Contraseña" required>
-                                <label for="reg-password"><i class="bi bi-lock me-2"></i>Crear Contraseña</label>
+                                <label for="reg-password"><i class="bi bi-lock me-2 text-primary"></i>Crear Contraseña</label>
                             </div>
 
-                            <button class="w-100 btn btn-lg btn-liquid-success mt-2 fw-semibold" type="submit">Crear Cuenta</button>
+                            <button class="w-100 btn btn-lg btn-success rounded-pill fw-semibold shadow-sm mt-2" type="submit">Crear Cuenta</button>
                         </form>
                     </div>
                 </div>
 
                 <div class="d-flex align-items-center my-4">
-                    <hr class="flex-grow-1 border-secondary">
-                    <span class="mx-3 text-white-50 small">O continuar con</span>
-                    <hr class="flex-grow-1 border-secondary">
+                    <hr class="flex-grow-1">
+                    <span class="mx-3 text-muted small">O continuar con</span>
+                    <hr class="flex-grow-1">
                 </div>
 
                 <!-- Google Login Rediseñado -->
-                <button id="google-login-btn" class="w-100 btn btn-lg btn-google">
+                <button id="google-login-btn" class="w-100 btn btn-lg btn-google rounded-pill shadow-sm">
                     <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="20px" height="20px" viewBox="0 0 48 48" class="abcRioButtonSvg">
                         <g><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></g>
                     </svg>
                     Google
                 </button>
 
-                <div id="login-error" class="alert alert-danger mt-4 d-none mb-0 small" role="alert"></div>
+                <div id="login-error" class="alert alert-danger mt-4 d-none mb-0 small text-start" role="alert"></div>
             </div>
         </div>
     </main>
