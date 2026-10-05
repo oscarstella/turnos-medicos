@@ -9,12 +9,183 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Login Page Styling */
+/* ========================================================
+   Liquid Animation Login Styling (Deep Dark + Neon Cyan/Violet)
+   ======================================================== */
 .login-bg {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  position: relative;
+  overflow: hidden;
+  background-color: #0b0f19;
+  background-image: 
+    radial-gradient(at 15% 20%, rgba(13, 110, 253, 0.25) 0px, transparent 50%),
+    radial-gradient(at 85% 80%, rgba(114, 9, 183, 0.25) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(0, 245, 212, 0.1) 0px, transparent 50%);
+  min-height: 100vh;
 }
-[data-bs-theme="dark"] .login-bg {
-  background: linear-gradient(135deg, #1f2024 0%, #2a313d 100%);
+
+/* Liquid Glowing Orbs Floating Behind */
+.liquid-shape {
+  position: absolute;
+  filter: blur(70px);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.85;
+  animation: floatLiquid 12s ease-in-out infinite alternate;
+}
+.liquid-shape-1 {
+  width: 360px;
+  height: 360px;
+  background: linear-gradient(135deg, #00d2ff, #0072ff);
+  top: 10%;
+  left: 18%;
+  animation-duration: 14s;
+}
+.liquid-shape-2 {
+  width: 400px;
+  height: 400px;
+  background: linear-gradient(135deg, #f72585, #7209b7);
+  bottom: 8%;
+  right: 18%;
+  animation-duration: 18s;
+  animation-delay: -4s;
+}
+.liquid-shape-3 {
+  width: 280px;
+  height: 280px;
+  background: linear-gradient(135deg, #4cc9f0, #4361ee);
+  top: 48%;
+  right: 30%;
+  animation-duration: 16s;
+  animation-delay: -7s;
+}
+
+@keyframes floatLiquid {
+  0% {
+    transform: translate(0px, 0px) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(45px, -35px) scale(1.12) rotate(40deg);
+  }
+  66% {
+    transform: translate(-30px, 40px) scale(0.92) rotate(-30deg);
+  }
+  100% {
+    transform: translate(20px, -20px) scale(1.05) rotate(15deg);
+  }
+}
+
+/* Glassmorphism Card like Liquid Animation Login */
+.liquid-glass-card {
+  position: relative;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(25px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(25px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 28px !important;
+  box-shadow: 
+    0 25px 60px rgba(0, 0, 0, 0.5),
+    inset 0 1px 1px rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff;
+}
+
+.liquid-avatar-badge {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0d6efd, #00f5d4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #ffffff;
+  box-shadow: 0 8px 24px rgba(13, 110, 253, 0.45);
+  margin-bottom: 1rem;
+}
+
+/* Inputs con estilo translúcido */
+.liquid-glass-card .form-floating > .form-control,
+.liquid-glass-card .form-select {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border-radius: 16px !important;
+  backdrop-filter: blur(8px);
+}
+.liquid-glass-card .form-floating > .form-control:focus,
+.liquid-glass-card .form-select:focus {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: #00d2ff !important;
+  box-shadow: 0 0 0 0.25rem rgba(0, 210, 255, 0.25) !important;
+  color: #ffffff !important;
+}
+.liquid-glass-card .form-floating > label,
+.liquid-glass-card .form-label {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+.liquid-glass-card .form-floating > .form-control::placeholder {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+.liquid-glass-card .form-select option {
+  background: #111827;
+  color: #ffffff;
+}
+
+/* Botón principal estilo Liquid Glow */
+.btn-liquid-primary {
+  background: linear-gradient(135deg, #0d6efd 0%, #00d2ff 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  border-radius: 50px !important;
+  font-weight: 600 !important;
+  padding: 12px 24px !important;
+  box-shadow: 0 8px 25px rgba(0, 210, 255, 0.35) !important;
+  transition: all 0.3s ease !important;
+}
+.btn-liquid-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 210, 255, 0.55) !important;
+  color: #ffffff !important;
+}
+
+/* Botón Registrarse Liquid Green / Cyan */
+.btn-liquid-success {
+  background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  border-radius: 50px !important;
+  font-weight: 600 !important;
+  padding: 12px 24px !important;
+  box-shadow: 0 8px 25px rgba(16, 185, 129, 0.35) !important;
+  transition: all 0.3s ease !important;
+}
+.btn-liquid-success:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(16, 185, 129, 0.55) !important;
+  color: #ffffff !important;
+}
+
+/* Tabs Liquid Pill Switcher */
+.liquid-pills {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 5px;
+  border-radius: 50px;
+  display: inline-flex;
+}
+.liquid-pills .nav-link {
+  color: rgba(255, 255, 255, 0.7) !important;
+  border-radius: 50px !important;
+  padding: 8px 24px !important;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+.liquid-pills .nav-link.active {
+  background: linear-gradient(135deg, #0d6efd 0%, #00d2ff 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 15px rgba(0, 210, 255, 0.35);
 }
 
 .glass-card {
@@ -31,34 +202,31 @@ body {
 }
 
 .form-signin {
-  max-width: 420px;
+  max-width: 480px;
   padding: 15px;
+  position: relative;
+  z-index: 2;
 }
 
 /* Google Button Styling */
 .btn-google {
-  background-color: #ffffff;
-  color: #3c4043;
-  border: 1px solid #dadce0;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50px;
   font-weight: 500;
-  transition: background-color 0.2s, box-shadow 0.2s;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
+  backdrop-filter: blur(10px);
 }
 .btn-google:hover {
-  background-color: #f8f9fa;
-  box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
-}
-[data-bs-theme="dark"] .btn-google {
-  background-color: #1a73e8;
+  background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
-  border-color: transparent;
-}
-[data-bs-theme="dark"] .btn-google:hover {
-  background-color: #1b66c9;
-  box-shadow: 0 1px 2px 0 rgba(0,0,0,0.3), 0 2px 6px 2px rgba(0,0,0,0.15);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
 }
 
 /* Sidebar para el dashboard */

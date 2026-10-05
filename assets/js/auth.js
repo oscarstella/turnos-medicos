@@ -32,6 +32,64 @@ function showError(message) {
     errorDiv.classList.remove('d-none');
 }
 
+// Iniciar sesión (soporta DNI o Email)
+if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorDiv.classList.add('d-none');
+        
+        const identifierInput = document.getElementById('login-identifier') || document.getElementById('login-email');
+        const passwordInput = document.getElementById('login-password');
+        const identifier = identifierInput ? identifierInput.value.trim() : '';
+        const password = passwordInput ? passwordInput.value : '';
+
+        if (!identifier || !password) {
+            showError('Por favor, ingresa tu DNI o Email y la contraseña.');
+            return;
+        }
+
+        try {
+            // Intentar primero autenticación local con DB (soporta DNI o Email)
+            const resp = await fetch(`${API_URL}/db_login.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: identifier, password: password })
+            });
+            const dbData = await resp.json().catch(() => ({}));
+
+            if (dbData.status === 'success' && dbData.user) {
+                localStorage.setItem('user', JSON.stringify(dbData.user));
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('redirect') === 'agendar' && urlParams.get('medico_id')) {
+                    window.location.href = 'agendar.php?medico_id=' + urlParams.get('medico_id');
+                } else {
+                    window.location.href = 'dashboard.php';
+                }
+                return;
+            }
+
+            // Si el backend indica que debe autenticarse con Firebase o no se encontró contraseña local
+            const firebaseEmail = (dbData.email && dbData.email.includes('@')) ? dbData.email : identifier;
+            if (!firebaseEmail.includes('@')) {
+                showError(dbData.message || 'Contraseña o credenciales incorrectas.');
+                return;
+            }
+
+            // Intentar login con Firebase usando el email resuelto
+            auth.signInWithEmailAndPassword(firebaseEmail, password)
+                .then((userCredential) => {
+                    handleBackendLogin(userCredential.user);
+                })
+                .catch((fbErr) => {
+                    showError('Error al iniciar sesión: ' + (dbData.message || fbErr.message));
+                });
+
+        } catch (err) {
+            showError('Error al conectar con el servidor.');
+        }
+    });
+}
+
 // Reutilizable para enviar datos extra al backend
 function handleBackendLogin(user, extraData = {}) {
     fetch(`${API_URL}/auth.php`, {
@@ -175,8 +233,9 @@ const forgotPasswordLink = document.getElementById('forgot-password-link');
 if(forgotPasswordLink) {
     forgotPasswordLink.addEventListener('click', (e) => {
         e.preventDefault();
-        const email = document.getElementById('email').value;
-        if(!email) {
+        const emailInput = document.getElementById('login-identifier') || document.getElementById('login-email');
+        const email = emailInput ? emailInput.value.trim() : '';
+        if(!email || !email.includes('@')) {
             showError('Por favor, ingresa tu correo electrónico en el campo superior para enviarte el enlace de recuperación.');
             return;
         }

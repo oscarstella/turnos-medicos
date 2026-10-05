@@ -12,13 +12,14 @@ $database = new Database();
 $db = $database->getConnection();
 $data = json_decode(file_get_contents("php://input"));
 
-if (!empty($data->email) && !empty($data->password)) {
-    $email = $data->email;
+$identifier = !empty($data->email) ? trim($data->email) : (!empty($data->dni) ? trim($data->dni) : (!empty($data->usuario) ? trim($data->usuario) : ''));
+
+if (!empty($identifier) && !empty($data->password)) {
     $password = $data->password;
 
-    $query = "SELECT id, firebase_uid, email, nombre, apellido, rol, contrasena FROM usuarios WHERE email = :email LIMIT 1";
+    $query = "SELECT id, firebase_uid, email, dni, nombre, apellido, rol, contrasena FROM usuarios WHERE email = :identifier OR dni = :identifier LIMIT 1";
     $stmt = $db->prepare($query);
-    $stmt->bindParam(":email", $email);
+    $stmt->bindParam(":identifier", $identifier);
     $stmt->execute();
 
     if ($stmt->rowCount() > 0) {
@@ -48,12 +49,16 @@ if (!empty($data->email) && !empty($data->password)) {
         } else {
             // El usuario existe pero no tiene contraseña local, por lo que debe loguearse con Firebase
             http_response_code(200);
-            echo json_encode(array("status" => "use_firebase", "message" => "Este usuario debe iniciar sesión con Firebase."));
+            echo json_encode(array(
+                "status" => "use_firebase",
+                "email" => $user['email'],
+                "message" => "Este usuario debe iniciar sesión con Firebase."
+            ));
         }
     } else {
         // Usuario no existe en DB, puede que sea de Firebase
         http_response_code(200);
-        echo json_encode(array("status" => "use_firebase", "message" => "Usuario no encontrado localmente, intentando con Firebase."));
+        echo json_encode(array("status" => "use_firebase", "email" => $identifier, "message" => "Usuario no encontrado localmente, intentando con Firebase."));
     }
 } else {
     http_response_code(400);

@@ -13,34 +13,39 @@
     <!-- Custom CSS con Cache Busting automático -->
     <link href="assets/css/style.css?v=<?php echo filemtime('assets/css/style.css'); ?>" rel="stylesheet">
 </head>
-<body class="login-bg d-flex align-items-center justify-content-center min-vh-100">
+<body class="login-bg d-flex align-items-center justify-content-center min-vh-100 position-relative py-5">
     
+    <!-- Esferas líquidas animadas de fondo (Liquid Glow Orbs) -->
+    <div class="liquid-shape liquid-shape-1"></div>
+    <div class="liquid-shape liquid-shape-2"></div>
+    <div class="liquid-shape liquid-shape-3"></div>
+
     <!-- Theme Toggle -->
-    <div class="position-absolute top-0 end-0 p-3">
-        <button class="btn btn-outline-secondary rounded-circle" id="theme-toggle">
-            <i class="bi bi-moon-fill"></i>
+    <div class="position-absolute top-0 end-0 p-3" style="z-index: 10;">
+        <button class="btn btn-outline-light rounded-circle border-0 shadow-sm" id="theme-toggle" style="background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);">
+            <i class="bi bi-moon-fill text-white"></i>
         </button>
     </div>
 
     <main class="form-signin w-100 m-auto text-center">
-        <div class="card glass-card border-0">
+        <div class="card liquid-glass-card border-0">
             <div class="card-body p-4 p-md-5">
                 
-                <!-- Logo o Icono Principal -->
-                <div class="mb-4 text-primary">
-                    <i class="bi bi-heart-pulse-fill" style="font-size: 3rem;"></i>
+                <!-- Badge Circular con Inicial / Icono de la animación líquida -->
+                <div class="liquid-avatar-badge mx-auto">
+                    <i class="bi bi-heart-pulse-fill"></i>
                 </div>
 
-                <h1 class="h3 mb-2 fw-bold">Clínica Médica</h1>
-                <p class="text-muted mb-4">Ingresa a tu cuenta para gestionar tus turnos</p>
+                <h1 class="h3 mb-1 fw-bold text-white">Bienvenido</h1>
+                <p class="text-white-50 mb-4 small">Ingresa o crea tu cuenta para tus turnos</p>
 
-                <!-- Tabs Login / Registro -->
-                <ul class="nav nav-pills mb-4 justify-content-center" id="pills-tab" role="tablist">
+                <!-- Tabs Login / Registro estilo Liquid Pills -->
+                <ul class="nav liquid-pills mb-4 justify-content-center mx-auto" id="pills-tab" role="tablist">
                   <li class="nav-item" role="presentation">
-                    <button class="nav-link active rounded-pill px-4" id="pills-login-tab" data-bs-toggle="pill" data-bs-target="#pills-login" type="button" role="tab">Iniciar Sesión</button>
+                    <button class="nav-link active" id="pills-login-tab" data-bs-toggle="pill" data-bs-target="#pills-login" type="button" role="tab">Iniciar Sesión</button>
                   </li>
                   <li class="nav-item" role="presentation">
-                    <button class="nav-link rounded-pill px-4" id="pills-register-tab" data-bs-toggle="pill" data-bs-target="#pills-register" type="button" role="tab">Registrarse</button>
+                    <button class="nav-link" id="pills-register-tab" data-bs-toggle="pill" data-bs-target="#pills-register" type="button" role="tab">Registrarse</button>
                   </li>
                 </ul>
 
@@ -48,18 +53,18 @@
                     <!-- LOGIN TAB -->
                     <div class="tab-pane fade show active" id="pills-login" role="tabpanel">
                         <form id="login-form">
-                            <div class="form-floating mb-3">
-                                <input type="email" class="form-control" id="login-email" placeholder="nombre@ejemplo.com" required>
-                                <label for="login-email"><i class="bi bi-envelope me-2"></i>Email</label>
+                            <div class="form-floating mb-3 text-start">
+                                <input type="text" class="form-control" id="login-identifier" placeholder="DNI o Email" required>
+                                <label for="login-identifier"><i class="bi bi-person-badge me-2"></i>DNI o Email</label>
                             </div>
-                            <div class="form-floating mb-3">
+                            <div class="form-floating mb-3 text-start">
                                 <input type="password" class="form-control" id="login-password" placeholder="Contraseña" required>
                                 <label for="login-password"><i class="bi bi-lock me-2"></i>Contraseña</label>
                             </div>
 
-                            <button class="w-100 btn btn-lg btn-primary fw-semibold" type="submit">Iniciar Sesión</button>
+                            <button class="w-100 btn btn-lg btn-liquid-primary mt-2" type="submit">Iniciar Sesión</button>
                             <div class="mt-3 text-center">
-                                <a href="#" id="forgot-password-link" class="text-decoration-none small">¿Olvidaste tu contraseña?</a>
+                                <a href="#" id="forgot-password-link" class="text-info text-decoration-none small">¿Olvidaste tu contraseña?</a>
                             </div>
                         </form>
                     </div>
@@ -114,15 +119,15 @@
                                 <label for="reg-password"><i class="bi bi-lock me-2"></i>Crear Contraseña</label>
                             </div>
 
-                            <button class="w-100 btn btn-lg btn-success fw-semibold" type="submit">Crear Cuenta</button>
+                            <button class="w-100 btn btn-lg btn-liquid-success mt-2 fw-semibold" type="submit">Crear Cuenta</button>
                         </form>
                     </div>
                 </div>
 
                 <div class="d-flex align-items-center my-4">
-                    <hr class="flex-grow-1">
-                    <span class="mx-3 text-muted small">O continuar con</span>
-                    <hr class="flex-grow-1">
+                    <hr class="flex-grow-1 border-secondary">
+                    <span class="mx-3 text-white-50 small">O continuar con</span>
+                    <hr class="flex-grow-1 border-secondary">
                 </div>
 
                 <!-- Google Login Rediseñado -->
@@ -168,7 +173,32 @@
                 icon.style.color = 'inherit';
             }
         }
+
+        // Conmutación garantizada de pestañas Iniciar Sesión / Registrarse
+        document.querySelectorAll('#pills-tab button').forEach(button => {
+            button.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelectorAll('#pills-tab .nav-link').forEach(btn => {
+                    btn.classList.remove('active');
+                    btn.setAttribute('aria-selected', 'false');
+                });
+                document.querySelectorAll('.tab-pane').forEach(pane => {
+                    pane.classList.remove('show', 'active');
+                });
+
+                this.classList.add('active');
+                this.setAttribute('aria-selected', 'true');
+                const targetSelector = this.getAttribute('data-bs-target');
+                const targetPane = document.querySelector(targetSelector);
+                if (targetPane) {
+                    targetPane.classList.add('show', 'active');
+                }
+            });
+        });
     </script>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>

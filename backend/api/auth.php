@@ -20,10 +20,18 @@ if(!empty($data->firebase_uid) && !empty($data->email)) {
     $nombre = !empty($data->nombre) ? $data->nombre : "Usuario";
 
     try {
-        // Verificar si el usuario ya existe en la base de datos por email o uid
-        $query = "SELECT id, rol, nombre, firebase_uid FROM usuarios WHERE email = :email LIMIT 1";
-        $stmt = $db->prepare($query);
-        $stmt->bindParam(":email", $email);
+        // Verificar si el usuario ya existe en la base de datos por DNI (si se proporcionó) o por email
+        $dniVal = !empty($data->dni) ? trim($data->dni) : null;
+        if (!empty($dniVal)) {
+            $query = "SELECT id, rol, nombre, firebase_uid, email, dni FROM usuarios WHERE dni = :dni OR email = :email LIMIT 1";
+            $stmt = $db->prepare($query);
+            $stmt->bindParam(":dni", $dniVal);
+            $stmt->bindParam(":email", $email);
+        } else {
+            $query = "SELECT id, rol, nombre, firebase_uid, email, dni FROM usuarios WHERE email = :email LIMIT 1";
+            $stmt = $db->prepare($query);
+            $stmt->bindParam(":email", $email);
+        }
         $stmt->execute();
         
         if($stmt->rowCount() > 0) {
