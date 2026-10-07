@@ -3,6 +3,17 @@ header('Content-Type: application/json; charset=UTF-8');
 require_once '_auth.php';
 require_once '../config/database.php';
 $db = (new Database())->getConnection();
+
+// Asegurar que el ENUM contenga 'asignado' y migrar turnos históricos en 'confirmado' a 'asignado'
+try {
+    $colState = $db->query("SHOW COLUMNS FROM turnos LIKE 'estado'")->fetch(PDO::FETCH_ASSOC);
+    if ($colState && isset($colState['Type']) && strpos($colState['Type'], "'asignado'") === false) {
+        $db->exec("ALTER TABLE turnos MODIFY COLUMN estado ENUM('libre','pendiente','confirmado','asignado','asistio','ausente','cancelado') NOT NULL DEFAULT 'asignado'");
+    }
+    // Convertir turnos creados previamente que tenían 'confirmado' por defecto al nuevo estatus 'asignado'
+    $db->exec("UPDATE turnos SET estado = 'asignado' WHERE estado = 'confirmado'");
+} catch (Exception $e) {}
+
 try {
     $user = require_firebase_user($db);
     $isAdmin = in_array($user['rol'], ['superadmin','admin','recepcionista'], true);
