@@ -872,9 +872,20 @@
       <div class="modal-body p-4">
         <form id="form-coberturas-medico">
             <input type="hidden" id="coberturas-medico-id">
-            <div class="position-relative mb-3">
+            <div class="position-relative mb-2">
                 <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
                 <input type="text" id="search-coberturas-modal" class="form-control rounded-pill ps-5 bg-light border-0 py-2" placeholder="Buscar obra social o plan (ej: OSDE, Swiss, Galeno...)" autocomplete="off">
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-3 px-1">
+                <span class="text-muted small">Selección rápida:</span>
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-2 py-1 me-1" onclick="marcarTodasCoberturas(true)" title="Marcar todas las obras sociales y sus planes">
+                        <i class="bi bi-check-all me-1"></i>Marcar todos
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-2 py-1" onclick="marcarTodasCoberturas(false)" title="Desmarcar todas las obras sociales y planes">
+                        <i class="bi bi-x-circle me-1"></i>Desmarcar todos
+                    </button>
+                </div>
             </div>
             <div id="coberturas-list-container" class="mb-4" style="max-height: 380px; overflow-y: auto;">
                 <!-- Se llenará dinámicamente -->

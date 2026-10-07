@@ -1970,9 +1970,21 @@ window.syncOSFromPlan = function(osId) {
     const planChecks = document.querySelectorAll(`.plan-de-os-${osId}`);
     const anyChecked = Array.from(planChecks).some(cb => cb.checked);
     const osCheck = document.getElementById(`os-check-${osId}`);
-    if (osCheck && anyChecked) {
-        osCheck.checked = true;
+    if (osCheck) {
+        osCheck.checked = anyChecked;
     }
+};
+
+window.marcarTodasCoberturas = function(marcar) {
+    const container = document.getElementById('coberturas-list-container');
+    if (!container) return;
+    
+    // Marcar/desmarcar todos los checkboxes visibles o totales
+    const osChecks = container.querySelectorAll('.check-os-medico');
+    const planChecks = container.querySelectorAll('.check-plan-medico');
+    
+    osChecks.forEach(cb => { cb.checked = marcar; });
+    planChecks.forEach(cb => { cb.checked = marcar; });
 };
 
 // Guardar Coberturas
