@@ -2522,14 +2522,31 @@ function cargarHorariosEnEditorInline(med) {
     cargarTurnosDelProfesional(med.id);
 }
 
-function cargarTurnosDelProfesional(medicoId) {
+async function cargarTurnosDelProfesional(medicoId) {
     const tbody = document.getElementById('tabla-turnos-medico-body');
     const badgeTotal = document.getElementById('badge-total-turnos-medico');
     if (!tbody) return;
 
     tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Cargando turnos asignados...</td></tr>';
 
-    fetch(`backend/api/get_mis_turnos.php`)
+    const headers = {};
+    try {
+        if (typeof auth !== 'undefined' && auth.currentUser) {
+            const token = await auth.currentUser.getIdToken();
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+        }
+    } catch (e) {}
+
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const params = new URLSearchParams();
+    if (medicoId) params.append('medico_id', medicoId);
+    if (user.firebase_uid) params.append('firebase_uid', user.firebase_uid);
+    if (user.email) params.append('email', user.email);
+
+    fetch(`backend/api/get_mis_turnos.php?${params.toString()}`, {
+        credentials: 'same-origin',
+        headers: headers
+    })
         .then(res => res.json())
         .then(turnos => {
             turnosDelMedicoActual = (Array.isArray(turnos) ? turnos : []).filter(t => t.medico_id == medicoId);
