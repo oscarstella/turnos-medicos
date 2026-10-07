@@ -138,6 +138,67 @@
         </div>
     </main>
 
+    <!-- Modal Completar Ficha Paciente (para registro / login con Google) -->
+    <div class="modal fade" id="modalCompletarDatosGoogle" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+          <div class="modal-header border-bottom-0 pb-0">
+            <div>
+                <h5 class="modal-title fw-bold text-primary"><i class="bi bi-person-lines-fill me-2"></i>Completar tus Datos</h5>
+                <small class="text-muted">Para finalizar tu registro con Google necesitamos tus datos obligatorios de salud.</small>
+            </div>
+          </div>
+          <div class="modal-body p-4">
+            <form id="form-completar-datos-google">
+                <input type="hidden" id="google-comp-email">
+                <div class="row g-2 mb-2 text-start">
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-muted">Nombre <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="google-comp-nombre" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-muted">Apellido <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="google-comp-apellido" required>
+                    </div>
+                </div>
+                <div class="row g-2 mb-2 text-start">
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-muted">DNI <span class="text-danger">*</span></label>
+                        <input type="text" inputmode="numeric" pattern="[0-9. -]{7,12}" maxlength="12" class="form-control" id="google-comp-dni" placeholder="Sin puntos" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-muted">Fecha Nac. <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="google-comp-fnac" required>
+                    </div>
+                </div>
+                <div class="mb-2 text-start">
+                    <label class="form-label small fw-semibold text-muted"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono <span class="text-danger">*</span></label>
+                    <input type="tel" class="form-control" id="google-comp-telefono" placeholder="Ej: 2944123456" required>
+                </div>
+                <div class="row g-2 mb-3 text-start">
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-muted">Cobertura Médica</label>
+                        <select class="form-select py-2" id="google-comp-os">
+                            <option value="">Particular / Sin Obra Social</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-muted">Plan</label>
+                        <select class="form-select py-2" id="google-comp-plan" disabled>
+                            <option value="">Particular / Sin plan</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="google-comp-error" class="alert alert-danger py-2 small d-none mb-3"></div>
+                <button type="submit" class="btn btn-primary w-100 rounded-pill py-2 fw-bold shadow-sm" id="btn-submit-google-comp">
+                    Guardar Ficha y Continuar
+                </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Script de Cambio de Tema -->
     <script>
         const themeToggle = document.getElementById('theme-toggle');

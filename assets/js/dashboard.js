@@ -458,9 +458,21 @@ function cargarMisTurnos() {
                 // Formatear hora (HH:MM:SS a HH:MM)
                 const horaFormat = turno.hora_inicio.substring(0, 5);
 
-                let badgeColor = 'bg-warning';
-                if(turno.estado === 'confirmado') badgeColor = 'bg-success';
-                if(turno.estado === 'cancelado') badgeColor = 'bg-danger';
+                let badgeColor = 'bg-primary-subtle text-primary border border-primary-subtle';
+                let estadoLabel = turno.estado;
+                if(turno.estado === 'asignado') {
+                    badgeColor = 'bg-info-subtle text-info-emphasis border border-info-subtle';
+                    estadoLabel = 'Asignado';
+                } else if(turno.estado === 'confirmado') {
+                    badgeColor = 'bg-success text-white';
+                    estadoLabel = 'Confirmado';
+                } else if(turno.estado === 'cancelado') {
+                    badgeColor = 'bg-danger text-white';
+                    estadoLabel = 'Cancelado';
+                } else if(turno.estado === 'pendiente') {
+                    badgeColor = 'bg-warning text-dark';
+                    estadoLabel = 'Pendiente';
+                }
 
                 let coberturaText = 'Particular';
                 if(turno.obra_social_nombre) {
@@ -483,7 +495,7 @@ function cargarMisTurnos() {
                                         <i class="bi bi-calendar-check me-2"></i>${fechaFormat}
                                     </h5>
                                     <span class="badge ${badgeColor} rounded-pill px-3 py-2 text-uppercase" style="font-size: 0.7rem;">
-                                        ${turno.estado}
+                                        ${estadoLabel}
                                     </span>
                                 </div>
                                 
@@ -1690,6 +1702,7 @@ function abrirEditMedico(id) {
     document.getElementById('edit-medico-matricula').value = med.matricula || '';
     document.getElementById('edit-medico-direccion').value = med.direccion || '';
     document.getElementById('edit-medico-biografia').value = med.biografia || '';
+    document.getElementById('edit-medico-dias-agenda').value = (med.dias_antelacion_agenda !== null && typeof med.dias_antelacion_agenda !== 'undefined') ? med.dias_antelacion_agenda : '';
     document.getElementById('edit-medico-foto').value = '';
 
     // Llenar select de sedes
@@ -1746,6 +1759,12 @@ function renderEspecialidadesCheckboxes(medico) {
         }).join('');
     }
 }
+
+// Atajos para configurar días de agenda abierta
+window.setDiasRapidosMedico = function(dias) {
+    const input = document.getElementById('edit-medico-dias-agenda');
+    if (input) input.value = dias;
+};
 
 // Al seleccionar una sede en el perfil del médico
 window.seleccionarSedeEnMedico = function(sedeId) {
@@ -1847,6 +1866,8 @@ document.getElementById('form-edit-medico').addEventListener('submit', function(
     const espChecks = document.querySelectorAll('.check-especialidad-medico:checked');
     const especialidadesSeleccionadas = Array.from(espChecks).map(cb => parseInt(cb.value));
 
+    const diasAgendaVal = document.getElementById('edit-medico-dias-agenda').value.trim();
+
     const payload = {
         id: document.getElementById('edit-medico-id').value,
         nombre: document.getElementById('edit-medico-nombre').value,
@@ -1854,6 +1875,7 @@ document.getElementById('form-edit-medico').addEventListener('submit', function(
         matricula: document.getElementById('edit-medico-matricula').value,
         direccion: document.getElementById('edit-medico-direccion').value,
         biografia: document.getElementById('edit-medico-biografia').value,
+        dias_antelacion_agenda: diasAgendaVal !== '' ? parseInt(diasAgendaVal) : null,
         foto_perfil: fotoUrl,
         especialidades: especialidadesSeleccionadas
     };
@@ -2424,12 +2446,23 @@ function guardarHorariosMedico() {
 }
 
 // --- Lógica Inline de Gestión de Agenda ---
+let turnosDelMedicoActual = [];
+let filtroEstadoTurnosActual = 'todos';
+
 function cargarHorariosEnEditorInline(med) {
     if (!med) return;
     
     document.getElementById('agenda-admin-medico-id').value = med.id;
-    document.getElementById('agenda-admin-medico-nombre').textContent = `Horarios de: Dr/a. ${limpiarNombre(med.nombre)} ${limpiarNombre(med.apellido)}`;
+    const nomDoctor = `Dr/a. ${limpiarNombre(med.nombre)} ${limpiarNombre(med.apellido)}`;
+    document.getElementById('agenda-admin-medico-nombre').textContent = `Agenda de: ${nomDoctor}`;
     
+    const subLabel = document.getElementById('agenda-admin-medico-subtitulo');
+    if (subLabel) {
+        const diasVentana = med.dias_antelacion_agenda ? `${med.dias_antelacion_agenda} días hacia adelante` : 'Límite general del sistema';
+        subLabel.textContent = `Especialidad: ${med.especialidad_nombre || 'General'} | Ventana de turnos: ${diasVentana}`;
+    }
+    
+    // 1. Cargar configuración de horarios
     const container = document.getElementById('agenda-admin-editor-container');
     container.innerHTML = '';
     
@@ -2438,7 +2471,146 @@ function cargarHorariosEnEditorInline(med) {
     } else {
         renderBloqueHorario(container, null);
     }
+
+    // 2. Cargar turnos asignados del profesional
+    cargarTurnosDelProfesional(med.id);
 }
+
+function cargarTurnosDelProfesional(medicoId) {
+    const tbody = document.getElementById('tabla-turnos-medico-body');
+    const badgeTotal = document.getElementById('badge-total-turnos-medico');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Cargando turnos asignados...</td></tr>';
+
+    fetch(`backend/api/get_mis_turnos.php`)
+        .then(res => res.json())
+        .then(turnos => {
+            turnosDelMedicoActual = (Array.isArray(turnos) ? turnos : []).filter(t => t.medico_id == medicoId);
+            if (badgeTotal) {
+                badgeTotal.textContent = `${turnosDelMedicoActual.length} turnos`;
+            }
+            renderTablaTurnosMedico();
+        })
+        .catch(() => {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Error al cargar turnos del profesional.</td></tr>';
+        });
+}
+
+function renderTablaTurnosMedico() {
+    const tbody = document.getElementById('tabla-turnos-medico-body');
+    if (!tbody) return;
+
+    const searchInput = document.getElementById('search-turnos-medico');
+    const q = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+    let filtrados = turnosDelMedicoActual;
+    if (filtroEstadoTurnosActual !== 'todos') {
+        filtrados = filtrados.filter(t => (t.estado || '').toLowerCase() === filtroEstadoTurnosActual);
+    }
+    if (q) {
+        filtrados = filtrados.filter(t => {
+            const nomPac = `${t.paciente_nombre || ''} ${t.paciente_apellido || ''}`.toLowerCase();
+            const dniPac = (t.paciente_dni || '').toLowerCase();
+            const telPac = (t.paciente_telefono || '').toLowerCase();
+            const osPac = (t.obra_social_nombre || '').toLowerCase();
+            return nomPac.includes(q) || dniPac.includes(q) || telPac.includes(q) || osPac.includes(q);
+        });
+    }
+
+    if (filtrados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No hay turnos registrados que coincidan con los filtros.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtrados.map(t => {
+        // Formatear fecha (YYYY-MM-DD a DD/MM/YYYY)
+        const partes = (t.fecha || '').split('-');
+        const fechaFmt = partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : t.fecha;
+        const horaFmt = (t.hora_inicio || '').substring(0, 5);
+
+        // Badge de estado
+        let badgeClass = 'bg-secondary';
+        let estadoTxt = t.estado || 'Asignado';
+        if (t.estado === 'asignado') {
+            badgeClass = 'bg-info-subtle text-info-emphasis border border-info-subtle';
+            estadoTxt = 'Asignado';
+        } else if (t.estado === 'confirmado') {
+            badgeClass = 'bg-success text-white';
+            estadoTxt = 'Confirmado';
+        } else if (t.estado === 'pendiente') {
+            badgeClass = 'bg-warning text-dark';
+            estadoTxt = 'Pendiente';
+        } else if (t.estado === 'asistio') {
+            badgeClass = 'bg-primary text-white';
+            estadoTxt = 'Asistió';
+        } else if (t.estado === 'cancelado') {
+            badgeClass = 'bg-danger text-white';
+            estadoTxt = 'Cancelado';
+        }
+
+        // WhatsApp / Teléfono con enlace directo
+        let contactoHtml = '<span class="text-muted small">Sin teléfono</span>';
+        if (t.paciente_telefono) {
+            const numLimpio = t.paciente_telefono.replace(/\D/g, '');
+            // Formatear link de WhatsApp internacional o argentino si falta prefijo
+            const waNum = numLimpio.startsWith('54') ? numLimpio : (numLimpio.length === 10 ? '549' + numLimpio : numLimpio);
+            const msgPredefinido = encodeURIComponent(`Hola ${t.paciente_nombre || ''}, nos comunicamos desde la Clínica por tu turno del ${fechaFmt} a las ${horaFmt} hs.`);
+            contactoHtml = `
+                <div class="d-flex align-items-center gap-1">
+                    <span class="small fw-semibold">${escapeHtml(t.paciente_telefono)}</span>
+                    <a href="https://wa.me/${waNum}?text=${msgPredefinido}" target="_blank" class="btn btn-sm btn-outline-success py-0 px-2 rounded-pill" title="Enviar WhatsApp al paciente">
+                        <i class="bi bi-whatsapp"></i>
+                    </a>
+                </div>
+            `;
+        }
+        if (t.paciente_email) {
+            contactoHtml += `<div class="text-muted small text-truncate" style="max-width:180px;"><i class="bi bi-envelope me-1"></i>${escapeHtml(t.paciente_email)}</div>`;
+        }
+
+        // Cobertura y Plan
+        let cobTxt = 'Particular';
+        if (t.obra_social_nombre) {
+            cobTxt = `${escapeHtml(t.obra_social_nombre)}${t.plan_nombre ? ' (' + escapeHtml(t.plan_nombre) + ')' : ''}`;
+        }
+
+        const pacNombre = (t.paciente_nombre || t.paciente_apellido) 
+            ? `${escapeHtml(t.paciente_nombre || '')} ${escapeHtml(t.paciente_apellido || '')}`.trim() 
+            : '<span class="text-muted">Sin nombre</span>';
+        const dniBadge = t.paciente_dni ? `<br><small class="text-muted">DNI: ${escapeHtml(t.paciente_dni)}</small>` : '';
+
+        const sedeTxt = t.sede_nombre ? `${escapeHtml(t.sede_nombre)}` : 'Sede Principal';
+
+        return `
+            <tr>
+                <td>
+                    <div class="fw-bold text-primary"><i class="bi bi-calendar3 me-1"></i>${fechaFmt}</div>
+                    <div class="small text-muted"><i class="bi bi-clock me-1"></i>${horaFmt} hs</div>
+                </td>
+                <td>
+                    <div class="fw-semibold">${pacNombre}</div>
+                    ${dniBadge}
+                </td>
+                <td>${contactoHtml}</td>
+                <td><span class="badge bg-light text-dark border">${cobTxt}</span></td>
+                <td><small class="text-muted"><i class="bi bi-geo-alt text-danger me-1"></i>${sedeTxt}</small></td>
+                <td><span class="badge ${badgeClass} rounded-pill px-2 py-1 text-uppercase" style="font-size:0.7rem;">${estadoTxt}</span></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+window.filtrarTurnosAgendaMedico = function(estado, btn) {
+    filtroEstadoTurnosActual = estado;
+    document.querySelectorAll('.btn-filtro-estado-agenda').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderTablaTurnosMedico();
+};
+
+window.filtrarTurnosAgendaMedicoInput = function() {
+    renderTablaTurnosMedico();
+};
 
 function agregarBloqueHorarioInline() {
     const container = document.getElementById('agenda-admin-editor-container');

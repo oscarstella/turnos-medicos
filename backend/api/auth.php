@@ -40,12 +40,25 @@ try {
                 throw new RuntimeException('Ese DNI ya está asociado a otra cuenta. Contactá a recepción.');
             }
             // The DNI identifies the patient record; it is never accepted as proof of identity.
-            $upd = $db->prepare('UPDATE usuarios SET firebase_uid = :uid, email = :email, dni = COALESCE(NULLIF(dni, ""), :dni), nombre = COALESCE(NULLIF(:nombre, ""), nombre), apellido = COALESCE(NULLIF(:apellido, ""), apellido), telefono = COALESCE(NULLIF(:telefono, ""), telefono) WHERE id = :id');
+            $upd = $db->prepare('UPDATE usuarios SET 
+                firebase_uid = :uid, 
+                email = :email, 
+                dni = COALESCE(NULLIF(dni, ""), :dni), 
+                nombre = COALESCE(NULLIF(:nombre, ""), nombre), 
+                apellido = COALESCE(NULLIF(:apellido, ""), apellido), 
+                telefono = COALESCE(NULLIF(:telefono, ""), telefono),
+                fecha_nacimiento = COALESCE(NULLIF(:fnac, ""), fecha_nacimiento),
+                obra_social_id = COALESCE(:os_id, obra_social_id),
+                plan_id = COALESCE(:plan_id, plan_id)
+                WHERE id = :id');
             $upd->execute([
                 ':uid' => $uid, ':email' => $verifiedEmail, ':dni' => $dni !== '' ? $dni : null,
                 ':nombre' => trim((string)($body->nombre ?? '')),
                 ':apellido' => trim((string)($body->apellido ?? '')),
                 ':telefono' => trim((string)($body->telefono ?? '')),
+                ':fnac' => !empty($body->fecha_nacimiento) ? $body->fecha_nacimiento : null,
+                ':os_id' => !empty($body->obra_social_id) ? intval($body->obra_social_id) : null,
+                ':plan_id' => !empty($body->plan_id) ? intval($body->plan_id) : null,
                 ':id' => $user['id']
             ]);
         } else {
@@ -63,12 +76,14 @@ try {
             throw new RuntimeException('Ese DNI ya tiene una ficha. Iniciá sesión con el correo registrado o contactá a recepción para vincularla.');
         }
         $name = trim((string)($body->nombre ?? $claims['name'] ?? explode('@', $email)[0]));
-        $insert = $db->prepare("INSERT INTO usuarios (firebase_uid, email, nombre, apellido, dni, fecha_nacimiento, telefono, rol) VALUES (:uid, :email, :nombre, :apellido, :dni, :fnac, :tel, 'paciente')");
+        $insert = $db->prepare("INSERT INTO usuarios (firebase_uid, email, nombre, apellido, dni, fecha_nacimiento, telefono, obra_social_id, plan_id, rol) VALUES (:uid, :email, :nombre, :apellido, :dni, :fnac, :tel, :os_id, :plan_id, 'paciente')");
         $insert->execute([
             ':uid' => $uid, ':email' => $email, ':nombre' => $name,
             ':apellido' => trim((string)($body->apellido ?? '')), ':dni' => $dni,
             ':fnac' => !empty($body->fecha_nacimiento) ? $body->fecha_nacimiento : null,
-            ':tel' => !empty($body->telefono) ? $body->telefono : null
+            ':tel' => !empty($body->telefono) ? $body->telefono : null,
+            ':os_id' => !empty($body->obra_social_id) ? intval($body->obra_social_id) : null,
+            ':plan_id' => !empty($body->plan_id) ? intval($body->plan_id) : null
         ]);
         $userId = (int)$db->lastInsertId();
     }
@@ -80,7 +95,7 @@ try {
     $_SESSION['user_id'] = $userId;
     $_SESSION['rol'] = $user['rol'];
     $_SESSION['nombre'] = $user['nombre'];
-    $count = $db->prepare("SELECT COUNT(*) FROM turnos WHERE paciente_id = :id AND estado IN ('pendiente','confirmado') AND fecha >= CURDATE()");
+    $count = $db->prepare("SELECT COUNT(*) FROM turnos WHERE paciente_id = :id AND estado IN ('asignado','pendiente','confirmado') AND fecha >= CURDATE()");
     $count->execute([':id' => $userId]);
     $user['turnos_pendientes'] = (int)$count->fetchColumn();
     http_response_code(200);

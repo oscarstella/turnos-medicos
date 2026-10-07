@@ -240,28 +240,87 @@
                 </div>
 
                 <div class="card border-0 shadow-sm rounded-4 d-none" id="agenda-admin-editor-card">
-                    <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="fw-bold mb-0" id="agenda-admin-medico-nombre">Horarios del Profesional</h5>
-                            <button class="btn btn-outline-primary btn-sm rounded-pill" onclick="agregarBloqueHorarioInline()">
-                                <i class="bi bi-plus-lg me-1"></i> Agregar bloque
-                            </button>
+                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0 px-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h5 class="fw-bold mb-0" id="agenda-admin-medico-nombre">Agenda del Profesional</h5>
+                                <small class="text-muted" id="agenda-admin-medico-subtitulo"></small>
+                            </div>
                         </div>
+                        <!-- Pestañas Horarios vs Turnos Asignados -->
+                        <ul class="nav nav-tabs card-header-tabs" id="agendaAdminTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active fw-semibold" id="tab-turnos-asignados-tab" data-bs-toggle="tab" data-bs-target="#tab-turnos-asignados" type="button" role="tab">
+                                    <i class="bi bi-calendar-week me-1 text-primary"></i> Turnos Asignados y Pacientes
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link fw-semibold" id="tab-horarios-atencion-tab" data-bs-toggle="tab" data-bs-target="#tab-horarios-atencion" type="button" role="tab">
+                                    <i class="bi bi-clock-history me-1 text-primary"></i> Configuración de Horarios
+                                </button>
+                            </li>
+                        </ul>
                     </div>
                     <div class="card-body p-4">
-                        <p class="text-muted small mb-4">
-                            Puedes asignar diferentes centros de atención a cada bloque de horario. 
-                            <a href="#" onclick="document.getElementById('menu-configuracion').click();" class="text-primary text-decoration-none fw-semibold"><i class="bi bi-geo-alt"></i> Administrar Sedes</a>
-                        </p>
-                        
-                        <!-- Contenedor donde se renderizan los bloques -->
-                        <div id="agenda-admin-editor-container"></div>
-                        
-                        <div class="mt-4 pt-3 border-top text-end">
-                            <input type="hidden" id="agenda-admin-medico-id">
-                            <button type="button" class="btn btn-primary rounded-pill px-4 py-2 fw-bold" onclick="guardarHorariosMedicoInline()">
-                                <i class="bi bi-check-lg me-1"></i> Guardar Cambios
-                            </button>
+                        <div class="tab-content" id="agendaAdminTabsContent">
+                            <!-- TAB 1: TURNOS ASIGNADOS DEL PROFESIONAL -->
+                            <div class="tab-pane fade show active" id="tab-turnos-asignados" role="tabpanel">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-primary-subtle text-primary border px-3 py-2 fs-6 fw-bold" id="badge-total-turnos-medico">0 turnos</span>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-secondary active btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('todos', this)">Todos</button>
+                                            <button type="button" class="btn btn-outline-success btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('confirmado', this)">Confirmados</button>
+                                            <button type="button" class="btn btn-outline-warning btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('pendiente', this)">Pendientes</button>
+                                            <button type="button" class="btn btn-outline-info btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('asistio', this)">Asistió</button>
+                                            <button type="button" class="btn btn-outline-danger btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('cancelado', this)">Cancelados</button>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <input type="text" class="form-control form-control-sm rounded-pill" id="search-turnos-medico" placeholder="Buscar por paciente, DNI, teléfono..." style="max-width: 250px;" oninput="filtrarTurnosAgendaMedicoInput(this.value)">
+                                    </div>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-hover align-middle mb-0" id="tabla-turnos-medico-table">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Fecha y Hora</th>
+                                                <th>Paciente</th>
+                                                <th>Contacto / WhatsApp</th>
+                                                <th>Obra Social / Plan</th>
+                                                <th>Sede</th>
+                                                <th>Estado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tabla-turnos-medico-body">
+                                            <tr><td colspan="6" class="text-center text-muted py-4">Cargando turnos...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- TAB 2: CONFIGURACIÓN DE HORARIOS -->
+                            <div class="tab-pane fade" id="tab-horarios-atencion" role="tabpanel">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <p class="text-muted small mb-0">
+                                        Configura los días, horas y centros de atención para este profesional. 
+                                        <a href="#" onclick="document.getElementById('menu-configuracion').click();" class="text-primary text-decoration-none fw-semibold"><i class="bi bi-geo-alt"></i> Administrar Sedes</a>
+                                    </p>
+                                    <button class="btn btn-outline-primary btn-sm rounded-pill" onclick="agregarBloqueHorarioInline()">
+                                        <i class="bi bi-plus-lg me-1"></i> Agregar bloque
+                                    </button>
+                                </div>
+                                
+                                <!-- Contenedor donde se renderizan los bloques -->
+                                <div id="agenda-admin-editor-container"></div>
+                                
+                                <div class="mt-4 pt-3 border-top text-end">
+                                    <input type="hidden" id="agenda-admin-medico-id">
+                                    <button type="button" class="btn btn-primary rounded-pill px-4 py-2 fw-bold" onclick="guardarHorariosMedicoInline()">
+                                        <i class="bi bi-check-lg me-1"></i> Guardar Cambios de Horarios
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -849,6 +908,24 @@
                 </select>
                 <input type="text" class="form-control bg-light border-0 rounded-3" id="edit-medico-direccion" placeholder="O escribe la dirección de atención...">
                 <small class="text-muted">Elige una sede cargada en Configuración o escribe la dirección manualmente.</small>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold">
+                    <i class="bi bi-calendar-range me-1 text-primary"></i>Ventana de Agenda Abierta
+                </label>
+                <div class="input-group">
+                    <input type="number" class="form-control bg-light border-0" id="edit-medico-dias-agenda" min="1" max="730" placeholder="Ej: 30, 60, 90, 180, 365...">
+                    <span class="input-group-text bg-light border-0 text-muted">días hacia adelante</span>
+                </div>
+                <div class="d-flex flex-wrap gap-1 mt-2">
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2 rounded-pill small" onclick="setDiasRapidosMedico(30)">30 d (1 mes)</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2 rounded-pill small" onclick="setDiasRapidosMedico(60)">60 d (2 m)</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2 rounded-pill small" onclick="setDiasRapidosMedico(90)">90 d (3 m)</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2 rounded-pill small" onclick="setDiasRapidosMedico(180)">180 d (6 m)</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2 rounded-pill small" onclick="setDiasRapidosMedico(365)">365 d (1 año)</button>
+                    <button type="button" class="btn btn-xs btn-outline-danger py-0 px-2 rounded-pill small" onclick="setDiasRapidosMedico('')">General del sistema</button>
+                </div>
+                <div class="form-text">Define hasta cuántos días en el futuro los pacientes pueden reservar turnos con este médico (evita turnos a años futuros). Déjalo vacío para usar el valor general.</div>
             </div>
             <div class="mb-3">
                 <label class="form-label fw-semibold">Biografía / Presentación</label>

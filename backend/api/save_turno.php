@@ -5,6 +5,15 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization');
 require_once '_auth.php';
 require_once '../config/database.php';
 $db = (new Database())->getConnection();
+
+// Asegurar que el ENUM de estado en turnos contemple 'asignado'
+try {
+    $colState = $db->query("SHOW COLUMNS FROM turnos LIKE 'estado'")->fetch(PDO::FETCH_ASSOC);
+    if ($colState && isset($colState['Type']) && strpos($colState['Type'], "'asignado'") === false) {
+        $db->exec("ALTER TABLE turnos MODIFY COLUMN estado ENUM('libre','pendiente','confirmado','asignado','asistio','ausente','cancelado') NOT NULL DEFAULT 'asignado'");
+    }
+} catch (Exception $e) {}
+
 $data = json_decode((string)file_get_contents('php://input'));
 
 try {
@@ -19,17 +28,26 @@ try {
     if (!$doctorId || !$date || $date->format('Y-m-d') !== $dateText || $date < new DateTime('today', $tz)) {
         http_response_code(400); throw new RuntimeException('Seleccioná un profesional y una fecha futura válida.');
     }
-    $agendaConfig = $db->prepare("SELECT valor FROM configuracion WHERE clave = 'meses_agenda' LIMIT 1");
-    $agendaConfig->execute();
-    $monthsAhead = max(1, min(12, (int)($agendaConfig->fetchColumn() ?: 3)));
-    $lastBookableDate = (new DateTime('today', $tz))->modify('+' . $monthsAhead . ' months');
+    // Verificar límite de agenda del médico o global del sistema
+    $docLimitQuery = $db->prepare("SELECT id, dias_antelacion_agenda FROM usuarios WHERE id = :id AND rol = 'medico' LIMIT 1");
+    $docLimitQuery->execute([':id' => $doctorId]);
+    $doctorRow = $docLimitQuery->fetch(PDO::FETCH_ASSOC);
+    if (!$doctorRow) { http_response_code(400); throw new RuntimeException('El profesional seleccionado no está disponible.'); }
+
+    if (!empty($doctorRow['dias_antelacion_agenda']) && (int)$doctorRow['dias_antelacion_agenda'] > 0) {
+        $daysAhead = (int)$doctorRow['dias_antelacion_agenda'];
+        $lastBookableDate = (new DateTime('today', $tz))->modify('+' . $daysAhead . ' days');
+    } else {
+        $agendaConfig = $db->prepare("SELECT valor FROM configuracion WHERE clave = 'meses_agenda' LIMIT 1");
+        $agendaConfig->execute();
+        $monthsAhead = max(1, min(12, (int)($agendaConfig->fetchColumn() ?: 3)));
+        $lastBookableDate = (new DateTime('today', $tz))->modify('+' . $monthsAhead . ' months');
+    }
+
     if ($date > $lastBookableDate) { http_response_code(400); throw new RuntimeException('La fecha está fuera del período habilitado para reservar.'); }
     if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $timeText)) {
         http_response_code(400); throw new RuntimeException('El horario seleccionado no es válido.');
     }
-    $doctor = $db->prepare("SELECT id FROM usuarios WHERE id = :id AND rol = 'medico' LIMIT 1");
-    $doctor->execute([':id' => $doctorId]);
-    if (!$doctor->fetchColumn()) { http_response_code(400); throw new RuntimeException('El profesional seleccionado no está disponible.'); }
 
     $dayNames = [1=>'Lunes',2=>'Martes',3=>'Miercoles',4=>'Jueves',5=>'Viernes',6=>'Sabado',7=>'Domingo'];
     $dayName = $dayNames[(int)$date->format('N')];
@@ -88,12 +106,12 @@ try {
     // Serialize booking attempts for this doctor. This also prevents different-start overlapping slots.
     $lock = $db->prepare('SELECT id FROM usuarios WHERE id = :id FOR UPDATE');
     $lock->execute([':id'=>$doctorId]);
-    $conflict = $db->prepare("SELECT id FROM turnos WHERE medico_id = :doctor AND fecha = :date AND estado IN ('pendiente','confirmado','asistio') AND hora_inicio < :end_time AND hora_fin > :start_time LIMIT 1");
+    $conflict = $db->prepare("SELECT id FROM turnos WHERE medico_id = :doctor AND fecha = :date AND estado IN ('asignado','pendiente','confirmado','asistio') AND hora_inicio < :end_time AND hora_fin > :start_time LIMIT 1");
     $conflict->execute([':doctor'=>$doctorId, ':date'=>$dateText, ':end_time'=>$endAt, ':start_time'=>$startAt]);
     if ($conflict->fetchColumn()) {
         $db->rollBack(); http_response_code(409); throw new RuntimeException('Ese horario acaba de ser reservado. Elegí otro horario disponible.');
     }
-    $insert = $db->prepare("INSERT INTO turnos (medico_id,paciente_id,especialidad_id,obra_social_id,plan_id,unidad_id,fecha,hora_inicio,hora_fin,estado) VALUES (:doctor,:patient,:specialty,:coverage,:plan,:unit,:date,:start,:end,'confirmado')");
+    $insert = $db->prepare("INSERT INTO turnos (medico_id,paciente_id,especialidad_id,obra_social_id,plan_id,unidad_id,fecha,hora_inicio,hora_fin,estado) VALUES (:doctor,:patient,:specialty,:coverage,:plan,:unit,:date,:start,:end,'asignado')");
     $insert->execute([':doctor'=>$doctorId, ':patient'=>$patient['id'], ':specialty'=>$specialtyId, ':coverage'=>$coverageId,
         ':plan'=>$planId, ':unit'=>$unitId, ':date'=>$dateText, ':start'=>$startAt, ':end'=>$endAt]);
     $turnoId = (int)$db->lastInsertId();

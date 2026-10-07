@@ -45,6 +45,13 @@ if(!empty($data->id)) {
         $updates[] = "foto_perfil = :foto_perfil";
         $params[':foto_perfil'] = $data->foto_perfil;
     }
+    if(property_exists($data, 'dias_antelacion_agenda')) {
+        $diasVal = ($data->dias_antelacion_agenda !== null && $data->dias_antelacion_agenda !== '') 
+            ? max(1, min(730, intval($data->dias_antelacion_agenda))) 
+            : null;
+        $updates[] = "dias_antelacion_agenda = :dias_antelacion_agenda";
+        $params[':dias_antelacion_agenda'] = $diasVal;
+    }
     
     if(count($updates) > 0) {
         $query .= implode(", ", $updates) . " WHERE id = :id AND rol = 'medico'";

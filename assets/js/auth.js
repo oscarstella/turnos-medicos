@@ -127,17 +127,120 @@ if (loginForm) {
     });
 }
 
-// Reutilizable para enviar datos extra al backend
-async function handleBackendLogin(user, extraData = {}) {
-    const token = await user.getIdToken();
-    try {
-        return await handleBackendToken(token, extraData);
-    } catch (error) {
-        if (!/DNI válido/.test(error.message)) throw error;
-        const dni = window.prompt('Para completar tu ficha, ingresá tu DNI (solo para asociarlo a tu cuenta verificada de Firebase):');
-        if (!dni) throw error;
-        return handleBackendToken(token, { ...extraData, dni });
+// Variables y soporte para modal de completar datos de Google
+let googleUserPendiente = null;
+const modalCompGoogleEl = document.getElementById('modalCompletarDatosGoogle');
+const modalCompGoogle = modalCompGoogleEl ? new bootstrap.Modal(modalCompGoogleEl) : null;
+const formCompGoogle = document.getElementById('form-completar-datos-google');
+const compOsSelect = document.getElementById('google-comp-os');
+const compPlSelect = document.getElementById('google-comp-plan');
+const compErrorDiv = document.getElementById('google-comp-error');
+
+// Cargar obras sociales y planes para el modal de Google
+if (compOsSelect && compPlSelect) {
+    fetch(`${API_URL}/crud_obras_sociales.php`)
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                data.forEach(os => {
+                    const opt = document.createElement('option');
+                    opt.value = os.id;
+                    opt.textContent = os.nombre;
+                    compOsSelect.appendChild(opt);
+                });
+            }
+        })
+        .catch(() => {});
+
+    compOsSelect.addEventListener('change', () => {
+        const osId = compOsSelect.value;
+        compPlSelect.innerHTML = '<option value="">Cargando planes...</option>';
+        compPlSelect.disabled = true;
+
+        if (!osId) {
+            compPlSelect.innerHTML = '<option value="">Particular / Sin plan</option>';
+            return;
+        }
+
+        fetch(`${API_URL}/get_planes.php?obra_social_id=${osId}`)
+            .then(res => res.json())
+            .then(planes => {
+                compPlSelect.innerHTML = '';
+                if (planes && planes.length > 0) {
+                    planes.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p.id;
+                        opt.textContent = p.nombre;
+                        compPlSelect.appendChild(opt);
+                    });
+                    compPlSelect.disabled = false;
+                } else {
+                    compPlSelect.innerHTML = '<option value="">Plan Único</option>';
+                    compPlSelect.disabled = false;
+                }
+            })
+            .catch(() => {
+                compPlSelect.innerHTML = '<option value="">Particular / Sin plan</option>';
+            });
+    });
+}
+
+function abrirModalCompletarDatosGoogle(user, datosIniciales = {}) {
+    googleUserPendiente = user;
+    if (compErrorDiv) compErrorDiv.classList.add('d-none');
+    
+    // Autocompletar con lo que viene de Google si está disponible
+    const displayName = (user.displayName || '').trim();
+    let nom = '';
+    let ape = '';
+    if (displayName) {
+        const partes = displayName.split(' ');
+        nom = partes[0] || '';
+        ape = partes.slice(1).join(' ') || '';
     }
+    
+    document.getElementById('google-comp-email').value = user.email || '';
+    document.getElementById('google-comp-nombre').value = datosIniciales.nombre || nom;
+    document.getElementById('google-comp-apellido').value = datosIniciales.apellido || ape;
+    document.getElementById('google-comp-dni').value = datosIniciales.dni || '';
+    document.getElementById('google-comp-fnac').value = datosIniciales.fecha_nacimiento || '';
+    document.getElementById('google-comp-telefono').value = datosIniciales.telefono || '';
+    
+    if (modalCompGoogle) {
+        modalCompGoogle.show();
+    }
+}
+
+if (formCompGoogle) {
+    formCompGoogle.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!googleUserPendiente) return;
+        
+        if (compErrorDiv) compErrorDiv.classList.add('d-none');
+        const btn = document.getElementById('btn-submit-google-comp');
+        if (btn) btn.disabled = true;
+        
+        const extraData = {
+            nombre: document.getElementById('google-comp-nombre').value.trim(),
+            apellido: document.getElementById('google-comp-apellido').value.trim(),
+            dni: document.getElementById('google-comp-dni').value.trim(),
+            fecha_nacimiento: document.getElementById('google-comp-fnac').value,
+            telefono: document.getElementById('google-comp-telefono').value.trim(),
+            obra_social_id: compOsSelect && compOsSelect.value ? parseInt(compOsSelect.value) : null,
+            plan_id: compPlSelect && compPlSelect.value ? parseInt(compPlSelect.value) : null
+        };
+        
+        try {
+            const token = await googleUserPendiente.getIdToken();
+            await handleBackendToken(token, extraData);
+        } catch (err) {
+            if (compErrorDiv) {
+                compErrorDiv.textContent = err.message || 'Error al guardar ficha.';
+                compErrorDiv.classList.remove('d-none');
+            }
+            if (btn) btn.disabled = false;
+        }
+    });
 }
 
 async function handleBackendToken(idToken, extraData = {}) {
@@ -149,7 +252,7 @@ async function handleBackendToken(idToken, extraData = {}) {
         },
         body: JSON.stringify({
             nombre: extraData.nombre || '',
-            apellido: extraData.apellido || "",
+            apellido: extraData.apellido || '',
             dni: extraData.dni || null,
             fecha_nacimiento: extraData.fecha_nacimiento || null,
             telefono: extraData.telefono || null,
@@ -162,6 +265,35 @@ async function handleBackendToken(idToken, extraData = {}) {
     localStorage.setItem('user', JSON.stringify(data.user));
     const urlParams = new URLSearchParams(window.location.search);
     redirigirSegunRol(data.user, urlParams);
+}
+
+// Reutilizable para enviar datos extra al backend
+async function handleBackendLogin(user, extraData = {}) {
+    const token = await user.getIdToken();
+    try {
+        return await handleBackendToken(token, extraData);
+    } catch (error) {
+        // Si falta DNI o datos obligatorios para crear la ficha del paciente
+        if (/DNI válido|completar tu perfil|obligatorios/i.test(error.message)) {
+            abrirModalCompletarDatosGoogle(user, extraData);
+            return;
+        }
+        throw error;
+    }
+}
+
+// Login con Google
+if(googleLoginBtn) {
+    googleLoginBtn.addEventListener('click', async () => {
+        auth.signInWithPopup(googleProvider)
+            .then(async (result) => {
+                // Verificar si existe el usuario o si le faltan datos
+                return handleBackendLogin(result.user);
+            })
+            .catch((error) => {
+                showError('Error al iniciar sesión con Google: ' + error.message);
+            });
+    });
 }
 
 // Cargar Obras Sociales para el registro de paciente

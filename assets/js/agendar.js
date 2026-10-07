@@ -545,8 +545,11 @@ window.wizardRenderCalendarioMock = function() {
     fetch('backend/api/config.php')
         .then(res => res.json())
         .then(async config => {
-            const mesesAgenda = parseInt(config.meses_agenda) || 3;
-            const diasTotales = mesesAgenda * 30; // approx
+            const mesesConfig = parseInt(config.meses_agenda) || 3;
+            let diasTotales = mesesConfig * 30; // approx general
+            if (wizardData.medico && wizardData.medico.dias_antelacion_agenda && parseInt(wizardData.medico.dias_antelacion_agenda) > 0) {
+                diasTotales = parseInt(wizardData.medico.dias_antelacion_agenda);
+            }
             const hasta = new Date();
             hasta.setDate(hasta.getDate() + diasTotales);
             const fechaIso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
