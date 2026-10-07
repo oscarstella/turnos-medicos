@@ -206,10 +206,42 @@ function abrirModalCompletarDatosGoogle(user, datosIniciales = {}) {
     document.getElementById('google-comp-fnac').value = datosIniciales.fecha_nacimiento || '';
     document.getElementById('google-comp-telefono').value = datosIniciales.telefono || '';
     
+    const noWaCheck = document.getElementById('google-comp-no-whatsapp');
+    if (noWaCheck) {
+        noWaCheck.checked = datosIniciales.tiene_whatsapp === false || datosIniciales.tiene_whatsapp === 0 || datosIniciales.tiene_whatsapp === '0';
+        toggleGoogleNoWhatsapp(noWaCheck.checked);
+    }
+    
     if (modalCompGoogle) {
         modalCompGoogle.show();
     }
 }
+
+window.toggleGoogleNoWhatsapp = function(noTiene) {
+    const lbl = document.getElementById('label-google-comp-telefono');
+    const inp = document.getElementById('google-comp-telefono');
+    if (!lbl || !inp) return;
+    if (noTiene) {
+        lbl.innerHTML = '<i class="bi bi-telephone-fill text-primary me-1"></i>Teléfono para Llamadas (Sin WhatsApp) <span class="text-danger">*</span>';
+        inp.placeholder = 'Número para llamadas (ej: 2944123456)';
+    } else {
+        lbl.innerHTML = '<i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono <span class="text-danger">*</span>';
+        inp.placeholder = 'Ej: 2944123456';
+    }
+};
+
+window.toggleRegNoWhatsapp = function(noTiene) {
+    const lbl = document.getElementById('label-reg-telefono');
+    const inp = document.getElementById('reg-telefono');
+    if (!lbl || !inp) return;
+    if (noTiene) {
+        lbl.innerHTML = '<i class="bi bi-telephone-fill text-primary me-1"></i>Teléfono para Llamadas (Sin WhatsApp)';
+        inp.placeholder = 'Número para llamadas (ej: 2944123456)';
+    } else {
+        lbl.innerHTML = '<i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono';
+        inp.placeholder = 'WhatsApp / Teléfono';
+    }
+};
 
 if (formCompGoogle) {
     formCompGoogle.addEventListener('submit', async (e) => {
@@ -220,12 +252,14 @@ if (formCompGoogle) {
         const btn = document.getElementById('btn-submit-google-comp');
         if (btn) btn.disabled = true;
         
+        const noWaCheck = document.getElementById('google-comp-no-whatsapp');
         const extraData = {
             nombre: document.getElementById('google-comp-nombre').value.trim(),
             apellido: document.getElementById('google-comp-apellido').value.trim(),
             dni: document.getElementById('google-comp-dni').value.trim(),
             fecha_nacimiento: document.getElementById('google-comp-fnac').value,
             telefono: document.getElementById('google-comp-telefono').value.trim(),
+            tiene_whatsapp: noWaCheck ? !noWaCheck.checked : true,
             obra_social_id: compOsSelect && compOsSelect.value ? parseInt(compOsSelect.value) : null,
             plan_id: compPlSelect && compPlSelect.value ? parseInt(compPlSelect.value) : null
         };
@@ -356,12 +390,14 @@ if(registerForm) {
         
         const osSelect = document.getElementById('reg-obra-social');
         const plSelect = document.getElementById('reg-plan');
+        const regNoWa = document.getElementById('reg-no-whatsapp');
         const extraData = {
             nombre: document.getElementById('reg-nombre').value,
             apellido: document.getElementById('reg-apellido').value,
             dni: document.getElementById('reg-dni').value,
             fecha_nacimiento: document.getElementById('reg-fecha-nac').value,
             telefono: document.getElementById('reg-telefono').value,
+            tiene_whatsapp: regNoWa ? !regNoWa.checked : true,
             obra_social_id: osSelect && osSelect.value ? parseInt(osSelect.value) : null,
             plan_id: plSelect && plSelect.value ? parseInt(plSelect.value) : null
         };

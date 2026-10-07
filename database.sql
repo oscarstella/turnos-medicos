@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     dni VARCHAR(20) NULL UNIQUE,
     fecha_nacimiento DATE NULL,
     telefono VARCHAR(30) NULL,
+    tiene_whatsapp TINYINT(1) NOT NULL DEFAULT 1,
     rol ENUM('superadmin','admin','recepcionista','medico','paciente') NOT NULL DEFAULT 'paciente',
     obra_social_id INT NULL,
     plan_id INT NULL,

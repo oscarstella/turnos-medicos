@@ -649,8 +649,14 @@
               <input type="date" class="form-control" id="nuevo-paciente-fnac" required>
             </div>
             <div class="col-md-6">
-              <label class="form-label small fw-semibold text-muted"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono</label>
+              <label class="form-label small fw-semibold text-muted" id="label-nuevo-paciente-telefono"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono</label>
               <input type="tel" class="form-control" id="nuevo-paciente-telefono" placeholder="Ej: 2944123456" required>
+              <div class="form-check mt-1">
+                <input class="form-check-input" type="checkbox" id="nuevo-paciente-no-whatsapp" onchange="toggleAdminPacNoWhatsapp('nuevo', this.checked)">
+                <label class="form-check-label small text-muted user-select-none" for="nuevo-paciente-no-whatsapp">
+                  No tiene WhatsApp (solo llamadas)
+                </label>
+              </div>
             </div>
             <div class="col-md-6">
               <label class="form-label small fw-semibold text-muted">Correo Electrónico (Email)</label>
@@ -710,8 +716,14 @@
               <input type="date" class="form-control" id="edit-paciente-fnac">
             </div>
             <div class="col-md-6">
-              <label class="form-label small fw-semibold text-muted"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono</label>
+              <label class="form-label small fw-semibold text-muted" id="label-edit-paciente-telefono"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono</label>
               <input type="tel" class="form-control" id="edit-paciente-telefono">
+              <div class="form-check mt-1">
+                <input class="form-check-input" type="checkbox" id="edit-paciente-no-whatsapp" onchange="toggleAdminPacNoWhatsapp('edit', this.checked)">
+                <label class="form-check-label small text-muted user-select-none" for="edit-paciente-no-whatsapp">
+                  No tiene WhatsApp (solo llamadas)
+                </label>
+              </div>
             </div>
             <div class="col-md-6">
               <label class="form-label small fw-semibold text-muted">Correo Electrónico (Email)</label>

@@ -68,8 +68,10 @@ switch ($method) {
             $chkDni->execute([':dni'=>$dni]);
             if ($chkDni->fetchColumn()) { http_response_code(409); echo json_encode(['message'=>'Ya existe una ficha con ese DNI.']); exit(); }
 
-            $query = "INSERT INTO usuarios (firebase_uid, nombre, apellido, email, dni, fecha_nacimiento, telefono, obra_social_id, plan_id, rol)
-                      VALUES (:fuid, :nombre, :apellido, :email, :dni, :fecha_nac, :tel, :os_id, :pl_id, :rol)";
+            $tiene_whatsapp = isset($data->tiene_whatsapp) ? ($data->tiene_whatsapp ? 1 : 0) : 1;
+
+            $query = "INSERT INTO usuarios (firebase_uid, nombre, apellido, email, dni, fecha_nacimiento, telefono, tiene_whatsapp, obra_social_id, plan_id, rol)
+                      VALUES (:fuid, :nombre, :apellido, :email, :dni, :fecha_nac, :tel, :tiene_whatsapp, :os_id, :pl_id, :rol)";
             $stmt = $db->prepare($query);
             $stmt->bindParam(':fuid', $fuid);
             $stmt->bindParam(':nombre', $nombre);
@@ -78,6 +80,7 @@ switch ($method) {
             $stmt->bindParam(':dni', $dni);
             $stmt->bindParam(':fecha_nac', $fecha_nacimiento);
             $stmt->bindParam(':tel', $telefono);
+            $stmt->bindParam(':tiene_whatsapp', $tiene_whatsapp, PDO::PARAM_INT);
             $stmt->bindParam(':os_id', $obra_social_id);
             $stmt->bindParam(':pl_id', $plan_id);
             $stmt->bindParam(':rol', $rol);
@@ -135,12 +138,15 @@ switch ($method) {
             $dup->execute([':dni'=>$dni, ':id'=>$data->id]);
             if ($dup->fetchColumn()) { http_response_code(409); echo json_encode(['message'=>'Ya existe otra ficha con ese DNI.']); exit(); }
 
+            $tiene_whatsapp = isset($data->tiene_whatsapp) ? ($data->tiene_whatsapp ? 1 : 0) : 1;
+
             $query = "UPDATE usuarios 
                       SET nombre = :nombre, 
                           apellido = :apellido, 
                           dni = :dni, 
                           fecha_nacimiento = :fecha_nac, 
                           telefono = :tel, 
+                          tiene_whatsapp = :tiene_whatsapp,
                           email = :email, 
                           obra_social_id = :os_id, 
                           plan_id = :pl_id 
@@ -151,6 +157,7 @@ switch ($method) {
             $stmt->bindParam(':dni', $dni);
             $stmt->bindParam(':fecha_nac', $fecha_nacimiento);
             $stmt->bindParam(':tel', $telefono);
+            $stmt->bindParam(':tiene_whatsapp', $tiene_whatsapp, PDO::PARAM_INT);
             $stmt->bindParam(':email', $email);
             $stmt->bindParam(':os_id', $obra_social_id);
             $stmt->bindParam(':pl_id', $plan_id);

@@ -6,6 +6,14 @@ require_once '_auth.php';
 require_once '../config/database.php';
 $db = (new Database())->getConnection();
 
+// Asegurar existencia de columna tiene_whatsapp en tabla usuarios
+try {
+    $colWa = $db->query("SHOW COLUMNS FROM usuarios LIKE 'tiene_whatsapp'")->fetchAll();
+    if (empty($colWa)) {
+        $db->exec("ALTER TABLE usuarios ADD COLUMN tiene_whatsapp TINYINT(1) NOT NULL DEFAULT 1");
+    }
+} catch (Exception $e) {}
+
 try {
     $claims = verify_firebase_id_token(firebase_token_from_request());
     $uid = $claims['sub'];
@@ -39,6 +47,7 @@ try {
                 http_response_code(409);
                 throw new RuntimeException('Ese DNI ya está asociado a otra cuenta. Contactá a recepción.');
             }
+            $tieneWhatsapp = isset($body->tiene_whatsapp) ? ($body->tiene_whatsapp ? 1 : 0) : 1;
             // The DNI identifies the patient record; it is never accepted as proof of identity.
             $upd = $db->prepare('UPDATE usuarios SET 
                 firebase_uid = :uid, 
@@ -47,6 +56,7 @@ try {
                 nombre = COALESCE(NULLIF(:nombre, ""), nombre), 
                 apellido = COALESCE(NULLIF(:apellido, ""), apellido), 
                 telefono = COALESCE(NULLIF(:telefono, ""), telefono),
+                tiene_whatsapp = :tiene_whatsapp,
                 fecha_nacimiento = COALESCE(NULLIF(:fnac, ""), fecha_nacimiento),
                 obra_social_id = COALESCE(:os_id, obra_social_id),
                 plan_id = COALESCE(:plan_id, plan_id)
@@ -56,6 +66,7 @@ try {
                 ':nombre' => trim((string)($body->nombre ?? '')),
                 ':apellido' => trim((string)($body->apellido ?? '')),
                 ':telefono' => trim((string)($body->telefono ?? '')),
+                ':tiene_whatsapp' => $tieneWhatsapp,
                 ':fnac' => !empty($body->fecha_nacimiento) ? $body->fecha_nacimiento : null,
                 ':os_id' => !empty($body->obra_social_id) ? intval($body->obra_social_id) : null,
                 ':plan_id' => !empty($body->plan_id) ? intval($body->plan_id) : null,
@@ -76,19 +87,21 @@ try {
             throw new RuntimeException('Ese DNI ya tiene una ficha. Iniciá sesión con el correo registrado o contactá a recepción para vincularla.');
         }
         $name = trim((string)($body->nombre ?? $claims['name'] ?? explode('@', $email)[0]));
-        $insert = $db->prepare("INSERT INTO usuarios (firebase_uid, email, nombre, apellido, dni, fecha_nacimiento, telefono, obra_social_id, plan_id, rol) VALUES (:uid, :email, :nombre, :apellido, :dni, :fnac, :tel, :os_id, :plan_id, 'paciente')");
+        $tieneWhatsapp = isset($body->tiene_whatsapp) ? ($body->tiene_whatsapp ? 1 : 0) : 1;
+        $insert = $db->prepare("INSERT INTO usuarios (firebase_uid, email, nombre, apellido, dni, fecha_nacimiento, telefono, tiene_whatsapp, obra_social_id, plan_id, rol) VALUES (:uid, :email, :nombre, :apellido, :dni, :fnac, :tel, :tiene_whatsapp, :os_id, :plan_id, 'paciente')");
         $insert->execute([
             ':uid' => $uid, ':email' => $email, ':nombre' => $name,
             ':apellido' => trim((string)($body->apellido ?? '')), ':dni' => $dni,
             ':fnac' => !empty($body->fecha_nacimiento) ? $body->fecha_nacimiento : null,
             ':tel' => !empty($body->telefono) ? $body->telefono : null,
+            ':tiene_whatsapp' => $tieneWhatsapp,
             ':os_id' => !empty($body->obra_social_id) ? intval($body->obra_social_id) : null,
             ':plan_id' => !empty($body->plan_id) ? intval($body->plan_id) : null
         ]);
         $userId = (int)$db->lastInsertId();
     }
 
-    $stmt = $db->prepare('SELECT id, nombre, apellido, email, dni, rol FROM usuarios WHERE id = :id');
+    $stmt = $db->prepare('SELECT id, nombre, apellido, email, dni, telefono, tiene_whatsapp, rol FROM usuarios WHERE id = :id');
     $stmt->execute([':id' => $userId]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     session_regenerate_id(true);

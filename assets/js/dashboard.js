@@ -629,11 +629,24 @@ function renderUsuarios(usuarios) {
         let telHtml = '<span class="text-muted small fst-italic">Sin teléfono</span>';
         if (u.telefono) {
             const cleanTel = u.telefono.replace(/[^0-9]/g, '');
-            telHtml = `
-                <a href="https://wa.me/${cleanTel}" target="_blank" class="btn btn-sm btn-outline-success rounded-pill px-2 py-1 text-nowrap fw-semibold shadow-sm" title="Contactar por WhatsApp">
-                    <i class="bi bi-whatsapp me-1"></i>${escapeHtml(u.telefono)}
-                </a>
-            `;
+            const tieneWa = (u.tiene_whatsapp !== 0 && u.tiene_whatsapp !== '0' && u.tiene_whatsapp !== false);
+            if (tieneWa) {
+                const waNum = cleanTel.startsWith('54') ? cleanTel : (cleanTel.length === 10 ? '549' + cleanTel : cleanTel);
+                telHtml = `
+                    <a href="https://wa.me/${waNum}" target="_blank" class="btn btn-sm btn-outline-success rounded-pill px-2 py-1 text-nowrap fw-semibold shadow-sm" title="Contactar por WhatsApp">
+                        <i class="bi bi-whatsapp me-1"></i>${escapeHtml(u.telefono)}
+                    </a>
+                `;
+            } else {
+                telHtml = `
+                    <div class="d-inline-flex align-items-center gap-1">
+                        <a href="tel:${cleanTel}" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-1 text-nowrap fw-semibold shadow-sm" title="Llamar directamente (No tiene WhatsApp)">
+                            <i class="bi bi-telephone-fill me-1"></i>${escapeHtml(u.telefono)}
+                        </a>
+                        <span class="badge bg-secondary-subtle text-secondary border py-0 px-1" style="font-size:0.68rem;">Solo llamadas</span>
+                    </div>
+                `;
+            }
         }
 
         const emailHtml = u.email 
@@ -773,18 +786,33 @@ if (modalCrearPacEl) {
     });
 }
 
+window.toggleAdminPacNoWhatsapp = function(tipo, noTiene) {
+    const lbl = document.getElementById(`label-${tipo}-paciente-telefono`);
+    const inp = document.getElementById(`${tipo}-paciente-telefono`);
+    if (!lbl || !inp) return;
+    if (noTiene) {
+        lbl.innerHTML = '<i class="bi bi-telephone-fill text-primary me-1"></i>Teléfono para Llamadas (Sin WhatsApp)';
+        inp.placeholder = 'Número para llamadas (ej: 2944123456)';
+    } else {
+        lbl.innerHTML = '<i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono';
+        inp.placeholder = 'Ej: 2944123456';
+    }
+};
+
 // Formulario Crear Paciente: submit
 document.getElementById('form-crear-paciente')?.addEventListener('submit', function(e) {
     e.preventDefault();
     const btn = document.getElementById('btn-guardar-paciente');
     if (btn) btn.disabled = true;
 
+    const noWa = document.getElementById('nuevo-paciente-no-whatsapp');
     const data = {
         nombre: document.getElementById('nuevo-paciente-nombre').value.trim(),
         apellido: document.getElementById('nuevo-paciente-apellido').value.trim(),
         dni: document.getElementById('nuevo-paciente-dni').value.trim(),
         fecha_nacimiento: document.getElementById('nuevo-paciente-fnac').value || null,
         telefono: document.getElementById('nuevo-paciente-telefono').value.trim(),
+        tiene_whatsapp: noWa ? !noWa.checked : true,
         email: document.getElementById('nuevo-paciente-email').value.trim(),
         obra_social_id: document.getElementById('nuevo-paciente-os').value || null,
         plan_id: document.getElementById('nuevo-paciente-plan').value || null
@@ -797,7 +825,7 @@ document.getElementById('form-crear-paciente')?.addEventListener('submit', funct
     })
     .then(res => res.json())
     .then(resp => {
-        if (resp.status === 'success') {
+        if (resp.status === 'success' || resp.id) {
             alert('Paciente registrado exitosamente.');
             const modalInstance = bootstrap.Modal.getInstance(document.getElementById('modalCrearPaciente'));
             if (modalInstance) modalInstance.hide();
@@ -827,6 +855,12 @@ function abrirEditarUsuario(id) {
     document.getElementById('edit-paciente-telefono').value = u.telefono || '';
     document.getElementById('edit-paciente-email').value = u.email || '';
 
+    const editNoWa = document.getElementById('edit-paciente-no-whatsapp');
+    if (editNoWa) {
+        editNoWa.checked = (u.tiene_whatsapp === 0 || u.tiene_whatsapp === '0' || u.tiene_whatsapp === false);
+        toggleAdminPacNoWhatsapp('edit', editNoWa.checked);
+    }
+
     poblarSelectObrasSociales('edit-paciente-os', u.obra_social_id, () => {
         actualizarSelectPlanes('edit-paciente-os', 'edit-paciente-plan', u.plan_id);
     });
@@ -838,6 +872,7 @@ function abrirEditarUsuario(id) {
 document.getElementById('form-editar-paciente')?.addEventListener('submit', function(e) {
     e.preventDefault();
     const id = document.getElementById('edit-paciente-id').value;
+    const editNoWa = document.getElementById('edit-paciente-no-whatsapp');
     const data = {
         id: id,
         nombre: document.getElementById('edit-paciente-nombre').value.trim(),
@@ -845,6 +880,7 @@ document.getElementById('form-editar-paciente')?.addEventListener('submit', func
         dni: document.getElementById('edit-paciente-dni').value.trim(),
         fecha_nacimiento: document.getElementById('edit-paciente-fnac').value || null,
         telefono: document.getElementById('edit-paciente-telefono').value.trim(),
+        tiene_whatsapp: editNoWa ? !editNoWa.checked : true,
         email: document.getElementById('edit-paciente-email').value.trim(),
         obra_social_id: document.getElementById('edit-paciente-os').value || null,
         plan_id: document.getElementById('edit-paciente-plan').value || null
@@ -857,14 +893,10 @@ document.getElementById('form-editar-paciente')?.addEventListener('submit', func
     })
     .then(res => res.json())
     .then(resp => {
-        if (resp.status === 'success') {
-            alert('Datos del paciente actualizados exitosamente.');
-            const modalInstance = bootstrap.Modal.getInstance(document.getElementById('modalEditarPaciente'));
-            if (modalInstance) modalInstance.hide();
-            cargarUsuarios();
-        } else {
-            alert('Error: ' + (resp.message || 'No se pudo actualizar el paciente'));
-        }
+        alert(resp.message || 'Datos del paciente actualizados exitosamente.');
+        const modalInstance = bootstrap.Modal.getInstance(document.getElementById('modalEditarPaciente'));
+        if (modalInstance) modalInstance.hide();
+        cargarUsuarios();
     })
     .catch(err => {
         alert('Error de conexión al actualizar paciente');
@@ -2567,17 +2599,30 @@ function renderTablaTurnosMedico() {
         let contactoHtml = '<span class="text-muted small">Sin teléfono</span>';
         if (t.paciente_telefono) {
             const numLimpio = t.paciente_telefono.replace(/\D/g, '');
-            // Formatear link de WhatsApp internacional o argentino si falta prefijo
-            const waNum = numLimpio.startsWith('54') ? numLimpio : (numLimpio.length === 10 ? '549' + numLimpio : numLimpio);
-            const msgPredefinido = encodeURIComponent(`Hola ${t.paciente_nombre || ''}, nos comunicamos desde la Clínica por tu turno del ${fechaFmt} a las ${horaFmt} hs.`);
-            contactoHtml = `
-                <div class="d-flex align-items-center gap-1">
-                    <span class="small fw-semibold">${escapeHtml(t.paciente_telefono)}</span>
-                    <a href="https://wa.me/${waNum}?text=${msgPredefinido}" target="_blank" class="btn btn-sm btn-outline-success py-0 px-2 rounded-pill" title="Enviar WhatsApp al paciente">
-                        <i class="bi bi-whatsapp"></i>
-                    </a>
-                </div>
-            `;
+            const tieneWa = (t.paciente_tiene_whatsapp !== 0 && t.paciente_tiene_whatsapp !== '0' && t.paciente_tiene_whatsapp !== false);
+            if (tieneWa) {
+                // Formatear link de WhatsApp internacional o argentino si falta prefijo
+                const waNum = numLimpio.startsWith('54') ? numLimpio : (numLimpio.length === 10 ? '549' + numLimpio : numLimpio);
+                const msgPredefinido = encodeURIComponent(`Hola ${t.paciente_nombre || ''}, nos comunicamos desde la Clínica por tu turno del ${fechaFmt} a las ${horaFmt} hs.`);
+                contactoHtml = `
+                    <div class="d-flex align-items-center gap-1">
+                        <span class="small fw-semibold">${escapeHtml(t.paciente_telefono)}</span>
+                        <a href="https://wa.me/${waNum}?text=${msgPredefinido}" target="_blank" class="btn btn-sm btn-outline-success py-0 px-2 rounded-pill" title="Enviar WhatsApp al paciente">
+                            <i class="bi bi-whatsapp"></i>
+                        </a>
+                    </div>
+                `;
+            } else {
+                contactoHtml = `
+                    <div class="d-flex align-items-center gap-1">
+                        <span class="small fw-semibold">${escapeHtml(t.paciente_telefono)}</span>
+                        <a href="tel:${numLimpio}" class="btn btn-sm btn-outline-primary py-0 px-2 rounded-pill" title="Llamada directa (No tiene WhatsApp)">
+                            <i class="bi bi-telephone-fill"></i>
+                        </a>
+                        <span class="badge bg-secondary-subtle text-secondary border py-0 px-1" style="font-size:0.68rem;" title="Este paciente no tiene WhatsApp">Solo llamadas</span>
+                    </div>
+                `;
+            }
         }
         if (t.paciente_email) {
             contactoHtml += `<div class="text-muted small text-truncate" style="max-width:180px;"><i class="bi bi-envelope me-1"></i>${escapeHtml(t.paciente_email)}</div>`;

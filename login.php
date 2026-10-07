@@ -87,9 +87,15 @@
                                     <label for="reg-fecha-nac">Fecha Nac.</label>
                                 </div>
                             </div>
-                            <div class="form-floating mb-2 text-start">
+                            <div class="form-floating mb-1 text-start">
                                 <input type="tel" class="form-control" id="reg-telefono" placeholder="WhatsApp / Teléfono" required>
-                                <label for="reg-telefono"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono</label>
+                                <label for="reg-telefono" id="label-reg-telefono"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono</label>
+                            </div>
+                            <div class="form-check text-start mb-2 ps-4">
+                                <input class="form-check-input" type="checkbox" id="reg-no-whatsapp" onchange="toggleRegNoWhatsapp(this.checked)">
+                                <label class="form-check-label small text-muted user-select-none" for="reg-no-whatsapp">
+                                    No tengo WhatsApp (usar este número solo para llamadas)
+                                </label>
                             </div>
                             <div class="row g-2 mb-2 text-start">
                                 <div class="col-md-6">
@@ -172,8 +178,16 @@
                     </div>
                 </div>
                 <div class="mb-2 text-start">
-                    <label class="form-label small fw-semibold text-muted"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono <span class="text-danger">*</span></label>
+                    <label class="form-label small fw-semibold text-muted" id="label-google-comp-telefono">
+                        <i class="bi bi-whatsapp text-success me-1"></i>WhatsApp / Teléfono <span class="text-danger">*</span>
+                    </label>
                     <input type="tel" class="form-control" id="google-comp-telefono" placeholder="Ej: 2944123456" required>
+                    <div class="form-check mt-1">
+                        <input class="form-check-input" type="checkbox" id="google-comp-no-whatsapp" onchange="toggleGoogleNoWhatsapp(this.checked)">
+                        <label class="form-check-label small text-muted user-select-none" for="google-comp-no-whatsapp">
+                            No tengo WhatsApp (usar este número solo para llamadas)
+                        </label>
+                    </div>
                 </div>
                 <div class="row g-2 mb-3 text-start">
                     <div class="col-6">

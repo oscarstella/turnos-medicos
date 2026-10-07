@@ -27,7 +27,7 @@ try {
     }
 
     $query = "
-        SELECT u.id, u.nombre, u.apellido, u.dni, u.fecha_nacimiento, u.email, u.telefono, u.rol, u.creado_en,
+        SELECT u.id, u.nombre, u.apellido, u.dni, u.fecha_nacimiento, u.email, u.telefono, u.tiene_whatsapp, u.rol, u.creado_en,
                u.obra_social_id, os.nombre as obra_social_nombre,
                u.plan_id, p.nombre as plan_nombre
         FROM usuarios u

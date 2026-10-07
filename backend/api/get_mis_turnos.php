@@ -22,7 +22,7 @@ try {
                    COALESCE(e.nombre,'Consulta General') AS especialidad_nombre,
                    o.nombre AS obra_social_nombre, p.nombre AS plan_nombre,
                    pac.id AS paciente_id, pac.nombre AS paciente_nombre, pac.apellido AS paciente_apellido,
-                   pac.telefono AS paciente_telefono, pac.email AS paciente_email, pac.dni AS paciente_dni,
+                   pac.telefono AS paciente_telefono, pac.tiene_whatsapp AS paciente_tiene_whatsapp, pac.email AS paciente_email, pac.dni AS paciente_dni,
                    uat.nombre AS sede_nombre, uat.calle AS sede_calle, uat.numero AS sede_numero 
             FROM turnos t 
             LEFT JOIN usuarios u ON t.medico_id=u.id 

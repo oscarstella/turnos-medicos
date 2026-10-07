@@ -35,10 +35,11 @@ ALTER TABLE turnos
 ALTER TABLE turnos 
     MODIFY COLUMN estado ENUM('libre', 'pendiente', 'confirmado', 'asignado', 'asistio', 'ausente', 'cancelado') DEFAULT 'asignado';
 
--- 6b. Columnas de configuración de agenda por médico
+-- 6b. Columnas de configuración de agenda por médico y preferencias de contacto
 ALTER TABLE usuarios 
     ADD COLUMN IF NOT EXISTS dias_antelacion_agenda INT NULL DEFAULT NULL,
-    ADD COLUMN IF NOT EXISTS dia_apertura_agenda INT NULL DEFAULT NULL;
+    ADD COLUMN IF NOT EXISTS dia_apertura_agenda INT NULL DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS tiene_whatsapp TINYINT(1) NOT NULL DEFAULT 1;
 
 -- 7. Hacer que paciente_id sea NULL para permitir slots libres
 ALTER TABLE turnos MODIFY paciente_id INT NULL;
