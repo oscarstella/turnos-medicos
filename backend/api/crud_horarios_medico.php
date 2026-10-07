@@ -1,6 +1,5 @@
 <?php
-session_start();
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/_auth.php';
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET, POST");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
@@ -16,24 +15,6 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['rol'], ['superadmin', '
 $database = new Database();
 $db = $database->getConnection();
 $method = $_SERVER['REQUEST_METHOD'];
-
-// Auto-healing: asegurarse de que unidades_atencion existe y que horarios_medicos tiene unidad_id
-try {
-    $db->exec("CREATE TABLE IF NOT EXISTS unidades_atencion (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        nombre VARCHAR(150) NOT NULL,
-        calle VARCHAR(150) NULL,
-        numero VARCHAR(20) NULL,
-        localidad VARCHAR(100) NULL,
-        activa TINYINT(1) DEFAULT 1,
-        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
-    // Agregar columna unidad_id si no existe
-    $cols = $db->query("SHOW COLUMNS FROM horarios_medicos LIKE 'unidad_id'")->fetchAll();
-    if(empty($cols)) {
-        $db->exec("ALTER TABLE horarios_medicos ADD COLUMN unidad_id INT NULL");
-    }
-} catch(Exception $e) { /* silencioso */ }
 
 switch($method) {
     case 'GET':
@@ -65,6 +46,32 @@ switch($method) {
             exit();
         }
 
+        if (!is_array($data->horarios)) { http_response_code(400); echo json_encode(['message'=>'La lista de horarios no es válida.']); exit(); }
+        $days = ['Lunes','Martes','Miercoles','Jueves','Viernes','Sabado','Domingo'];
+        $blocks = [];
+        foreach ($data->horarios as $h) {
+            if (empty($h->dia_semana) || empty($h->hora_inicio) || empty($h->hora_fin)) continue;
+            $startText = substr((string)$h->hora_inicio,0,5); $endText = substr((string)$h->hora_fin,0,5);
+            if (!in_array($h->dia_semana,$days,true) || !preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/',$startText) || !preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/',$endText)) {
+                http_response_code(400); echo json_encode(['message'=>'Revisá los días y horarios ingresados.']); exit();
+            }
+            $start=(int)substr($startText,0,2)*60+(int)substr($startText,3,2);
+            $end=(int)substr($endText,0,2)*60+(int)substr($endText,3,2);
+            $duration=filter_var($h->duracion_turno_minutos ?? 30,FILTER_VALIDATE_INT,['options'=>['min_range'=>5,'max_range'=>240]]);
+            $unitId=filter_var($h->unidad_id ?? null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+            if ($start >= $end || !$duration || !$unitId) { http_response_code(400); echo json_encode(['message'=>'Cada bloque debe tener rango, duración y sede válidos.']); exit(); }
+            $unitCheck=$db->prepare('SELECT 1 FROM unidades_atencion WHERE id=:id AND activa=1'); $unitCheck->execute([':id'=>$unitId]);
+            if (!$unitCheck->fetchColumn()) { http_response_code(400); echo json_encode(['message'=>'Seleccioná una sede activa para cada bloque.']); exit(); }
+            foreach ($blocks as $existing) {
+                if ($existing['dia'] === $h->dia_semana && $start < $existing['end'] && $end > $existing['start']) {
+                    http_response_code(400); echo json_encode(['message'=>'Hay horarios superpuestos para ese profesional.']); exit();
+                }
+            }
+            $blocks[]=['dia'=>$h->dia_semana,'inicio'=>$startText.':00','fin'=>$endText.':00','duracion'=>$duration,'unidad_id'=>$unitId,'start'=>$start,'end'=>$end];
+        }
+        $doctorCheck=$db->prepare("SELECT id FROM usuarios WHERE id=:id AND rol='medico'"); $doctorCheck->execute([':id'=>$data->medico_id]);
+        if (!$doctorCheck->fetchColumn()) { http_response_code(400); echo json_encode(['message'=>'El profesional seleccionado no es válido.']); exit(); }
+
         try {
             $db->beginTransaction();
 
@@ -74,23 +81,17 @@ switch($method) {
             $del->execute();
 
             // Insertar los nuevos
-            foreach($data->horarios as $h) {
-                if(empty($h->dia_semana) || empty($h->hora_inicio) || empty($h->hora_fin)) continue;
-                
+            foreach($blocks as $h) {
                 $ins = $db->prepare("
                     INSERT INTO horarios_medicos (medico_id, dia_semana, hora_inicio, hora_fin, duracion_turno_minutos, unidad_id)
                     VALUES (:medico_id, :dia, :inicio, :fin, :duracion, :unidad_id)
                 ");
-                $duracion = $h->duracion_turno_minutos ?? 30;
-                $unidad_id = (!empty($h->unidad_id) && is_numeric($h->unidad_id)) ? intval($h->unidad_id) : null;
-                if ($unidad_id === null) {
-                    $firstSede = $db->query("SELECT id FROM unidades_atencion WHERE activa = 1 ORDER BY id ASC LIMIT 1")->fetchColumn();
-                    if ($firstSede) $unidad_id = intval($firstSede);
-                }
+                $duracion = $h['duracion'];
+                $unidad_id = $h['unidad_id'];
                 $ins->bindParam(":medico_id", $data->medico_id);
-                $ins->bindParam(":dia", $h->dia_semana);
-                $ins->bindParam(":inicio", $h->hora_inicio);
-                $ins->bindParam(":fin", $h->hora_fin);
+                $ins->bindParam(":dia", $h['dia']);
+                $ins->bindParam(":inicio", $h['inicio']);
+                $ins->bindParam(":fin", $h['fin']);
                 $ins->bindParam(":duracion", $duracion);
                 $ins->bindParam(":unidad_id", $unidad_id);
                 $ins->execute();
@@ -101,7 +102,7 @@ switch($method) {
         } catch(PDOException $e) {
             $db->rollBack();
             http_response_code(500);
-            echo json_encode(["message" => "Error al guardar horarios.", "error" => $e->getMessage()]);
+            echo json_encode(["message" => "No se pudieron guardar los horarios. Revisá los datos e intentá nuevamente."]);
         }
         break;
 }

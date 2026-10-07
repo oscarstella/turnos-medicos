@@ -1,6 +1,5 @@
 <?php
-session_start();
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/_auth.php';
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
@@ -19,29 +18,6 @@ if ($method !== 'GET') {
 
 $database = new Database();
 $db = $database->getConnection();
-
-// Auto-healing: crear tabla si no existe
-$db->exec("CREATE TABLE IF NOT EXISTS unidades_atencion (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    nombre VARCHAR(150) NOT NULL,
-    calle VARCHAR(150) NULL,
-    numero VARCHAR(20) NULL,
-    localidad VARCHAR(100) NULL,
-    activa TINYINT(1) DEFAULT 1,
-    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)");
-
-// Auto-healing: asegurar columnas de latitud y longitud
-try {
-    $colsLat = $db->query("SHOW COLUMNS FROM unidades_atencion LIKE 'latitud'")->fetchAll();
-    if (empty($colsLat)) {
-        $db->exec("ALTER TABLE unidades_atencion ADD COLUMN latitud DECIMAL(10,8) NULL AFTER localidad");
-    }
-    $colsLng = $db->query("SHOW COLUMNS FROM unidades_atencion LIKE 'longitud'")->fetchAll();
-    if (empty($colsLng)) {
-        $db->exec("ALTER TABLE unidades_atencion ADD COLUMN longitud DECIMAL(11,8) NULL AFTER latitud");
-    }
-} catch(Exception $ex) {}
 
 $data = json_decode(file_get_contents("php://input"));
 

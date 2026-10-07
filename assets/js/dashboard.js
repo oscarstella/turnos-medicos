@@ -552,6 +552,8 @@ function cargarMisTurnos() {
 let usuariosDisponibles = [];
 let especialidadesDisponibles = [];
 let sedesDisponibles = [];
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+function safeImageUrl(value, fallback) { try { const u = new URL(String(value || fallback || ''), location.href); return ['http:','https:'].includes(u.protocol) ? u.href : fallback; } catch (_) { return fallback; } }
 
 // ==========================================
 // GESTIÓN DE PACIENTES (USUARIOS)
@@ -568,7 +570,7 @@ function cargarUsuarios() {
                 usuariosDisponibles = data.usuarios;
                 renderUsuarios(usuariosDisponibles);
             } else {
-                tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">${data.message || 'Error al cargar pacientes'}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">${escapeHtml(data.message || 'Error al cargar pacientes')}</td></tr>`;
             }
         })
         .catch(err => {
@@ -587,8 +589,8 @@ function renderUsuarios(usuarios) {
     }
 
     usuarios.forEach(u => {
-        const nombreCompleto = `${u.nombre || ''} ${u.apellido || ''}`.trim() || 'Sin Nombre';
-        const inicial = (u.nombre ? u.nombre.charAt(0) : 'P').toUpperCase();
+        const nombreCompleto = escapeHtml(`${u.nombre || ''} ${u.apellido || ''}`.trim() || 'Sin Nombre');
+        const inicial = escapeHtml((u.nombre ? u.nombre.charAt(0) : 'P').toUpperCase());
         
         let fechaNacFmt = '<span class="text-muted small fst-italic">Sin cargar</span>';
         if (u.fecha_nacimiento) {
@@ -596,20 +598,20 @@ function renderUsuarios(usuarios) {
             if (parts.length === 3) {
                 fechaNacFmt = `<span class="fw-semibold text-secondary">${parts[2]}/${parts[1]}/${parts[0]}</span>`;
             } else {
-                fechaNacFmt = u.fecha_nacimiento;
+                fechaNacFmt = escapeHtml(u.fecha_nacimiento);
             }
         }
 
         const dniHtml = u.dni 
-            ? `<span class="fw-bold text-dark">${u.dni}</span>` 
+            ? `<span class="fw-bold text-dark">${escapeHtml(u.dni)}</span>`
             : `<span class="text-muted small fst-italic">Sin DNI</span>`;
 
         const osHtml = u.obra_social_nombre 
-            ? `<span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1"><i class="bi bi-shield-check me-1"></i>${u.obra_social_nombre}</span>` 
+            ? `<span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1"><i class="bi bi-shield-check me-1"></i>${escapeHtml(u.obra_social_nombre)}</span>`
             : `<span class="badge bg-light text-muted border px-2 py-1">Particular</span>`;
 
         const planHtml = u.plan_nombre 
-            ? `<span class="badge bg-secondary-subtle text-dark border px-2 py-1">${u.plan_nombre}</span>` 
+            ? `<span class="badge bg-secondary-subtle text-dark border px-2 py-1">${escapeHtml(u.plan_nombre)}</span>`
             : `<span class="text-muted small">-</span>`;
 
         let telHtml = '<span class="text-muted small fst-italic">Sin teléfono</span>';
@@ -617,13 +619,13 @@ function renderUsuarios(usuarios) {
             const cleanTel = u.telefono.replace(/[^0-9]/g, '');
             telHtml = `
                 <a href="https://wa.me/${cleanTel}" target="_blank" class="btn btn-sm btn-outline-success rounded-pill px-2 py-1 text-nowrap fw-semibold shadow-sm" title="Contactar por WhatsApp">
-                    <i class="bi bi-whatsapp me-1"></i>${u.telefono}
+                    <i class="bi bi-whatsapp me-1"></i>${escapeHtml(u.telefono)}
                 </a>
             `;
         }
 
         const emailHtml = u.email 
-            ? `<span class="text-muted small">${u.email}</span>` 
+            ? `<span class="text-muted small">${escapeHtml(u.email)}</span>`
             : `<span class="text-muted small fst-italic">-</span>`;
 
         const row = `
@@ -635,7 +637,7 @@ function renderUsuarios(usuarios) {
                         </div>
                         <div>
                             <div class="fw-bold text-dark">${nombreCompleto}</div>
-                            <div class="text-muted small">ID: #${u.id}</div>
+                            <div class="text-muted small">ID: #${parseInt(u.id, 10) || 0}</div>
                         </div>
                     </div>
                 </td>
@@ -646,10 +648,10 @@ function renderUsuarios(usuarios) {
                 <td>${telHtml}</td>
                 <td>${emailHtml}</td>
                 <td class="pe-4 text-end text-nowrap">
-                    <button class="btn btn-sm btn-outline-primary rounded-circle me-1" onclick="abrirEditarUsuario(${u.id})" title="Editar paciente">
+                    <button class="btn btn-sm btn-outline-primary rounded-circle me-1" onclick="abrirEditarUsuario(${parseInt(u.id, 10) || 0})" title="Editar paciente">
                         <i class="bi bi-pencil"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-danger rounded-circle" onclick="borrarUsuario(${u.id})" title="Eliminar paciente">
+                    <button class="btn btn-sm btn-outline-danger rounded-circle" onclick="borrarUsuario(${parseInt(u.id, 10) || 0})" title="Eliminar paciente">
                         <i class="bi bi-trash"></i>
                     </button>
                 </td>
@@ -661,18 +663,19 @@ function renderUsuarios(usuarios) {
 
 function filtrarUsuarios() {
     const searchVal = document.getElementById('search-usuarios')?.value.toLowerCase() || '';
+    const searchDni = searchVal.replace(/\D/g, '');
 
     const filtrados = usuariosDisponibles.filter(u => {
         const nombreCompleto = `${u.nombre || ''} ${u.apellido || ''}`.toLowerCase();
         const email = (u.email || '').toLowerCase();
-        const dni = (u.dni || '').toLowerCase();
+        const dni = (u.dni || '').replace(/\D/g, '');
         const tel = (u.telefono || '').toLowerCase();
         const os = (u.obra_social_nombre || '').toLowerCase();
         const plan = (u.plan_nombre || '').toLowerCase();
         
         return nombreCompleto.includes(searchVal) || 
                email.includes(searchVal) || 
-               dni.includes(searchVal) || 
+               (searchDni !== '' && dni.includes(searchDni)) ||
                tel.includes(searchVal) || 
                os.includes(searchVal) ||
                plan.includes(searchVal);
@@ -694,7 +697,7 @@ function poblarSelectObrasSociales(selectId, selectedId = null, onComplete = nul
             if (Array.isArray(data)) {
                 data.forEach(os => {
                     const isSel = selectedId && (selectedId == os.id) ? 'selected' : '';
-                    sel.innerHTML += `<option value="${os.id}" ${isSel}>${os.nombre}</option>`;
+                    sel.innerHTML += `<option value="${parseInt(os.id,10)||0}" ${isSel}>${escapeHtml(os.nombre)}</option>`;
                 });
             }
             if (onComplete) onComplete();
@@ -727,7 +730,7 @@ function actualizarSelectPlanes(osSelectId, planSelectId, selectedPlanId = null)
             if (Array.isArray(planes) && planes.length > 0) {
                 planes.forEach(p => {
                     const isSel = selectedPlanId && (selectedPlanId == p.id) ? 'selected' : '';
-                    planSelect.innerHTML += `<option value="${p.id}" ${isSel}>${p.nombre}</option>`;
+                    planSelect.innerHTML += `<option value="${parseInt(p.id,10)||0}" ${isSel}>${escapeHtml(p.nombre)}</option>`;
                 });
             }
             planSelect.disabled = false;
@@ -899,9 +902,9 @@ function cargarEspecialidades() {
                 data.forEach(esp => {
                     tbody.innerHTML += `
                         <tr>
-                            <td>${esp.nombre}</td>
+                            <td>${escapeHtml(esp.nombre)}</td>
                             <td class="text-end">
-                                <button class="btn btn-sm btn-outline-danger" onclick="borrarEspecialidad(${esp.id})">
+                                <button class="btn btn-sm btn-outline-danger" onclick="borrarEspecialidad(${parseInt(esp.id,10)||0})">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </td>
@@ -914,7 +917,7 @@ function cargarEspecialidades() {
             if(selectFilter) {
                 selectFilter.innerHTML = '<option value="medico">Todos los Médicos</option>';
                 data.forEach(esp => {
-                    selectFilter.innerHTML += `<option value="esp_${esp.id}">${esp.nombre}</option>`;
+                    selectFilter.innerHTML += `<option value="esp_${parseInt(esp.id,10)||0}">${escapeHtml(esp.nombre)}</option>`;
                 });
             }
         });
@@ -1122,7 +1125,7 @@ if(modalTurno) {
                 const sel = document.getElementById('turno-especialidad');
                 sel.innerHTML = '<option value="" selected disabled>Selecciona especialidad...</option>';
                 data.forEach(e => {
-                    sel.innerHTML += `<option value="${e.id}">${e.nombre}</option>`;
+                    sel.innerHTML += `<option value="${parseInt(e.id,10)||0}">${escapeHtml(e.nombre)}</option>`;
                 });
             });
 
@@ -1135,7 +1138,7 @@ if(modalTurno) {
                 sel.innerHTML = '<option value="" selected disabled>Selecciona tu cobertura médica...</option>';
                 sel.innerHTML += '<option value="particular">Particular (Sin Obra Social)</option>';
                 data.forEach(o => {
-                    sel.innerHTML += `<option value="${o.id}">${o.nombre}</option>`;
+                    sel.innerHTML += `<option value="${parseInt(o.id,10)||0}">${escapeHtml(o.nombre)}</option>`;
                 });
             });
 
@@ -1159,7 +1162,7 @@ if(modalTurno) {
                 medicoSel.innerHTML = '<option value="" selected disabled>Selecciona un profesional...</option>';
                 if(data.length > 0) {
                     data.forEach(m => {
-                        medicoSel.innerHTML += `<option value="${m.id}">${nombreCompletoMedico(m)}</option>`;
+                        medicoSel.innerHTML += `<option value="${parseInt(m.id,10)||0}">${escapeHtml(nombreCompletoMedico(m))}</option>`;
                     });
                     medicoSel.disabled = false;
                 } else {
@@ -1614,7 +1617,7 @@ function renderMedicos(medicos) {
         const apeLimpio = limpiarNombre(med.apellido);
         const defaultAvatar = obtenerAvatarDefault(nomLimpio, apeLimpio);
         const fotoHtml = med.foto_perfil
-            ? `<img src="${med.foto_perfil}" class="rounded-circle mb-3 object-fit-cover shadow-sm" width="100" height="100" style="border: 3px solid #e9ecef;" onerror="this.onerror=null;this.src='${defaultAvatar}';">`
+            ? `<img src="${escapeHtml(safeImageUrl(med.foto_perfil, defaultAvatar))}" class="rounded-circle mb-3 object-fit-cover shadow-sm" width="100" height="100" style="border: 3px solid #e9ecef;" onerror="this.onerror=null;this.src='${escapeHtml(defaultAvatar)}';">`
             : `<img src="${defaultAvatar}" class="rounded-circle mb-3 object-fit-cover shadow-sm" width="100" height="100" style="border: 3px solid #e9ecef;">`;
         
         const horariosResumen = med.horarios && med.horarios.length > 0
@@ -1625,13 +1628,13 @@ function renderMedicos(medicos) {
                         data-calle="${encodeURIComponent(h.unidad_calle || '')}" 
                         data-numero="${encodeURIComponent(h.unidad_numero || '')}" 
                         data-localidad="${encodeURIComponent(h.unidad_localidad || '')}" 
-                        data-lat="${h.unidad_latitud || ''}" 
-                        data-lng="${h.unidad_longitud || ''}" 
+                        data-lat="${escapeHtml(h.unidad_latitud || '')}"
+                        data-lng="${escapeHtml(h.unidad_longitud || '')}"
                         onclick="abrirModalSedeDesdeBtn(this)" 
-                        title="Ver en Google Maps"><i class="bi bi-geo-alt-fill text-danger me-1"></i>${h.unidad_nombre}</button>` 
+                        title="Ver en Google Maps"><i class="bi bi-geo-alt-fill text-danger me-1"></i>${escapeHtml(h.unidad_nombre)}</button>`
                     : '';
                 return `<div class="badge bg-light text-dark border me-1 mb-1 p-2 text-start d-block" style="font-size:0.78rem; font-weight:normal;">
-                    <i class="bi bi-clock text-primary me-1"></i><strong>${h.dia_semana}:</strong> ${h.hora_inicio.slice(0,5)} a ${h.hora_fin.slice(0,5)} hs${sede}
+                    <i class="bi bi-clock text-primary me-1"></i><strong>${escapeHtml(h.dia_semana)}:</strong> ${escapeHtml(h.hora_inicio.slice(0,5))} a ${escapeHtml(h.hora_fin.slice(0,5))} hs${sede}
                 </div>`;
             }).join('')
             : `<span class="text-muted small">Sin horarios configurados</span>`;
@@ -1643,18 +1646,18 @@ function renderMedicos(medicos) {
                 <div class="card h-100 border-0 shadow-sm rounded-4 overflow-hidden">
                     <div class="card-body p-4 text-center">
                         ${fotoHtml}
-                        <h5 class="fw-bold mb-1">Dr/a. ${nomLimpio} ${apeLimpio}</h5>
-                        <p class="text-muted small mb-1">${med.especialidad_nombre || 'Sin especialidad'}</p>
-                        <p class="text-muted small mb-2">Matrícula: ${med.matricula || 'No especificada'}</p>
+                        <h5 class="fw-bold mb-1">Dr/a. ${escapeHtml(nomLimpio)} ${escapeHtml(apeLimpio)}</h5>
+                        <p class="text-muted small mb-1">${escapeHtml(med.especialidad_nombre || 'Sin especialidad')}</p>
+                        <p class="text-muted small mb-2">Matrícula: ${escapeHtml(med.matricula || 'No especificada')}</p>
                         <div class="mb-3 text-start px-2" style="max-height:130px; overflow-y:auto;">${horariosResumen}</div>
                         <div class="d-grid gap-2">
-                            <button class="btn btn-outline-primary btn-sm rounded-pill" onclick="abrirEditMedico(${med.id})">
+                            <button class="btn btn-outline-primary btn-sm rounded-pill" onclick="abrirEditMedico(${parseInt(med.id,10)||0})">
                                 <i class="bi bi-pencil-square me-1"></i> Editar Perfil y Especialidades
                             </button>
-                            <button class="btn btn-outline-warning btn-sm rounded-pill" onclick="abrirHorariosMedico(${med.id})">
+                            <button class="btn btn-outline-warning btn-sm rounded-pill" onclick="abrirHorariosMedico(${parseInt(med.id,10)||0})">
                                 <i class="bi bi-clock me-1"></i> Horarios (${med.horarios ? med.horarios.length : 0})
                             </button>
-                            <button class="btn btn-outline-success btn-sm rounded-pill" onclick="abrirCoberturasMedico(${med.id})">
+                            <button class="btn btn-outline-success btn-sm rounded-pill" onclick="abrirCoberturasMedico(${parseInt(med.id,10)||0})">
                                 <i class="bi bi-shield-check me-1"></i> Coberturas (${cantCoberturas})
                             </button>
                         </div>
@@ -1696,7 +1699,7 @@ function abrirEditMedico(id) {
         sedesDisponibles.forEach(s => {
             const dir = [s.calle, s.numero].filter(Boolean).join(' ');
             const label = s.nombre + (dir ? ` (${dir})` : '');
-            sedeSelect.innerHTML += `<option value="${s.id}">${label}</option>`;
+            sedeSelect.innerHTML += `<option value="${parseInt(s.id,10)||0}">${escapeHtml(label)}</option>`;
         });
     }
     
@@ -1946,7 +1949,7 @@ function abrirCoberturasMedico(id) {
                     noResultsMsg.className = 'alert alert-info text-center small py-3 mt-2';
                     container.appendChild(noResultsMsg);
                 }
-                noResultsMsg.innerHTML = `<i class="bi bi-search me-1"></i> No se encontraron coberturas ni planes para "<strong>${e.target.value}</strong>".`;
+                noResultsMsg.innerHTML = `<i class="bi bi-search me-1"></i> No se encontraron coberturas ni planes para "<strong>${escapeHtml(e.target.value)}</strong>".`;
                 noResultsMsg.classList.remove('d-none');
             } else if (noResultsMsg) {
                 noResultsMsg.classList.add('d-none');
@@ -2035,17 +2038,17 @@ function renderSedes(sedes) {
         const dir = [s.calle, s.numero].filter(Boolean).join(' ') || '—';
         tbody.innerHTML += `
             <tr>
-                <td class="fw-semibold">${s.nombre}</td>
-                <td>${dir}</td>
-                <td>${s.localidad || '—'}</td>
+                <td class="fw-semibold">${escapeHtml(s.nombre)}</td>
+                <td>${escapeHtml(dir)}</td>
+                <td>${escapeHtml(s.localidad || '—')}</td>
                 <td class="text-end">
-                    <button class="btn btn-sm btn-outline-info me-1" onclick="verMapaDeSede('${encodeURIComponent(s.nombre)}', '${encodeURIComponent(s.calle || '')}', '${encodeURIComponent(s.numero || '')}', '${encodeURIComponent(s.localidad || '')}', '${s.latitud || ''}', '${s.longitud || ''}')" title="Ver en Google Maps y Cómo llegar">
+                    <button class="btn btn-sm btn-outline-info me-1" data-nombre="${encodeURIComponent(s.nombre || '')}" data-calle="${encodeURIComponent(s.calle || '')}" data-numero="${encodeURIComponent(s.numero || '')}" data-localidad="${encodeURIComponent(s.localidad || '')}" data-lat="${escapeHtml(s.latitud || '')}" data-lng="${escapeHtml(s.longitud || '')}" onclick="abrirModalSedeDesdeBtn(this)" title="Ver en Google Maps y Cómo llegar">
                         <i class="bi bi-geo-alt-fill text-danger"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirModalSede(${s.id})" title="Editar Sede">
+                    <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirModalSede(${parseInt(s.id,10)||0})" title="Editar Sede">
                         <i class="bi bi-pencil"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="borrarSede(${s.id})" title="Eliminar Sede">
+                    <button class="btn btn-sm btn-outline-danger" onclick="borrarSede(${parseInt(s.id,10)||0})" title="Eliminar Sede">
                         <i class="bi bi-trash"></i>
                     </button>
                 </td>

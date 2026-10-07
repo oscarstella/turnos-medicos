@@ -1,6 +1,5 @@
 <?php
-session_start();
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/_auth.php';
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: POST");
 header("Access-Control-Max-Age: 3600");
@@ -37,6 +36,19 @@ if(
         $apellido = !empty($data->apellido) ? $data->apellido : "";
         $dni = !empty($data->dni) ? $data->dni : null;
         $rol = $data->rol;
+        $rolesPermitidos = ['paciente','medico','recepcionista','admin','superadmin'];
+        if (!in_array($rol, $rolesPermitidos, true) || (in_array($rol, ['admin','superadmin'], true) && $_SESSION['rol'] !== 'superadmin')) {
+            http_response_code(403);
+            echo json_encode(['message'=>'No tenés permisos para asignar ese rol.']);
+            exit();
+        }
+        if ($rol === 'paciente') {
+            $dni = preg_replace('/\D+/', '', (string)$dni);
+            if (!preg_match('/^\d{7,8}$/', $dni)) { http_response_code(400); echo json_encode(['message'=>'El DNI debe tener 7 u 8 números.']); exit(); }
+            $checkDni = $db->prepare("SELECT id FROM usuarios WHERE REGEXP_REPLACE(dni, '[^0-9]', '') = :dni LIMIT 1");
+            $checkDni->execute([':dni'=>$dni]);
+            if ($checkDni->fetchColumn()) { http_response_code(409); echo json_encode(['message'=>'Ya existe una ficha con ese DNI.']); exit(); }
+        }
         
         $contrasena = null;
         if (!empty($data->password)) {
@@ -65,7 +77,7 @@ if(
         }
     } catch(PDOException $e) {
         http_response_code(500);
-        echo json_encode(array("message" => "Error en la base de datos: " . $e->getMessage()));
+        echo json_encode(array("message" => "No se pudo crear el usuario. Verificá los datos e intentá nuevamente."));
     }
 } else {
     http_response_code(400);

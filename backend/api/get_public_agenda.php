@@ -11,13 +11,6 @@ $search_especialidad = isset($_GET['especialidad_id']) ? intval($_GET['especiali
 $search_obra_social = isset($_GET['obra_social_id']) ? intval($_GET['obra_social_id']) : 0;
 
 try {
-    // 0. Auto-healing: Crear tabla si no existe para evitar error 500 en el servidor vivo
-    $db->exec("CREATE TABLE IF NOT EXISTS medicos_obras_sociales (
-        usuario_id INT NOT NULL,
-        obra_social_id INT NOT NULL,
-        PRIMARY KEY (usuario_id, obra_social_id)
-    )");
-
     // 1. Obtener la lista base de médicos (filtrada)
     $q_medicos = "
         SELECT u.id, u.nombre, u.apellido, u.foto_perfil, u.direccion 
@@ -104,14 +97,12 @@ try {
 
     // 5. Ensamblar los datos y sanitizar nombres/apellidos
     $resultado = [];
-    $medicosLimpiarBD = [];
 
     foreach ($medicos as $medico) {
         $id = $medico['id'];
         
         // Sanitizar apellido y nombre (remover direcciones entre paréntesis)
         if (strpos($medico['apellido'], '(') !== false) {
-            $medicosLimpiarBD[] = $medico['id'];
             $medico['apellido'] = trim(preg_replace('/\s*\(.*?\)/u', '', $medico['apellido']));
             $medico['apellido'] = trim(preg_replace('/\s*–\s*\d+.*$/u', '', $medico['apellido']));
         }
@@ -136,20 +127,10 @@ try {
         $resultado[] = $medico;
     }
 
-    // Auto-healing silencioso en BD para médicos que tenían paréntesis
-    if (!empty($medicosLimpiarBD)) {
-        try {
-            require_once __DIR__ . '/clean_medicos_sedes.php';
-            if (function_exists('ejecutarLimpiezaMedicosSedes')) {
-                ejecutarLimpiezaMedicosSedes($db);
-            }
-        } catch(Exception $ex) {}
-    }
-
     echo json_encode($resultado);
 
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Error al obtener la agenda: ' . $e->getMessage()]);
+    echo json_encode(['error' => 'No se pudo obtener la agenda.']);
 }
 ?>

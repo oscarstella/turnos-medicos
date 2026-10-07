@@ -1,20 +1,19 @@
 <?php
-session_start();
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/_auth.php';
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: POST");
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['rol'], ['superadmin', 'admin'])) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['rol'] ?? '', ['superadmin', 'admin'], true)) {
     http_response_code(403);
     echo json_encode(array("message" => "Acceso denegado."));
     exit();
 }
 
-$target_dir = "../../img/medicos/";
+$target_dir = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'img' . DIRECTORY_SEPARATOR . 'medicos' . DIRECTORY_SEPARATOR;
 
 // Create directory if it does not exist
 if (!is_dir($target_dir)) {
-    mkdir($target_dir, 0777, true);
+    mkdir($target_dir, 0755, true);
 }
 
 if (!isset($_FILES["image"])) {
@@ -23,13 +22,8 @@ if (!isset($_FILES["image"])) {
     exit();
 }
 
-$imageFileType = strtolower(pathinfo($_FILES["image"]["name"], PATHINFO_EXTENSION));
-$valid_extensions = array("jpg", "jpeg", "png", "gif", "webp");
-
-if (!in_array($imageFileType, $valid_extensions)) {
-    http_response_code(400);
-    echo json_encode(array("message" => "Solo se permiten archivos JPG, JPEG, PNG, GIF y WEBP."));
-    exit();
+if (($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+    http_response_code(400); echo json_encode(['message'=>'La carga del archivo no se completó.']); exit();
 }
 
 // Check if image file is a actual image or fake image
@@ -40,6 +34,12 @@ if($check === false) {
     exit();
 }
 
+$mime = (new finfo(FILEINFO_MIME_TYPE))->file($_FILES['image']['tmp_name']);
+$mimeExtensions = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'];
+if (!isset($mimeExtensions[$mime]) || $check[0] > 6000 || $check[1] > 6000) {
+    http_response_code(400); echo json_encode(['message'=>'La imagen debe ser JPG, PNG o WEBP y no superar 6000 px por lado.']); exit();
+}
+
 // Limit size to 5MB
 if ($_FILES["image"]["size"] > 5000000) {
     http_response_code(400);
@@ -48,7 +48,7 @@ if ($_FILES["image"]["size"] > 5000000) {
 }
 
 // Generate unique name
-$new_filename = uniqid("medico_") . "." . $imageFileType;
+$new_filename = bin2hex(random_bytes(16)) . '.' . $mimeExtensions[$mime];
 $target_file = $target_dir . $new_filename;
 
 if (move_uploaded_file($_FILES["image"]["tmp_name"], $target_file)) {

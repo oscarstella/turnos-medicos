@@ -1,6 +1,5 @@
 <?php
-session_start();
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/_auth.php';
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE");
 header("Access-Control-Max-Age: 3600");
@@ -9,8 +8,6 @@ header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers
 include_once '../config/database.php';
 
 // Verificar permisos (solo superadmin o recepcionista pueden ver todos los usuarios)
-// En un sistema real de APIs, usaríamos un JWT enviado en los headers. 
-// Para mantenerlo simple, confiamos en la sesión de PHP.
 if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['superadmin', 'admin', 'recepcionista'])) {
     http_response_code(403);
     echo json_encode(array("message" => "Acceso denegado. No tienes permisos suficientes."));
@@ -50,12 +47,13 @@ switch ($method) {
             $nombre = trim($data->nombre);
             $apellido = !empty($data->apellido) ? trim($data->apellido) : '';
             $email = trim($data->email);
-            $dni = !empty($data->dni) ? trim($data->dni) : null;
+            $dni = normalize_dni($data->dni ?? '');
+            if (!valid_dni($dni)) { http_response_code(400); echo json_encode(['message'=>'El DNI debe tener 7 u 8 números.']); exit(); }
             $fecha_nacimiento = !empty($data->fecha_nacimiento) ? trim($data->fecha_nacimiento) : null;
             $telefono = !empty($data->telefono) ? trim($data->telefono) : null;
             $obra_social_id = (!empty($data->obra_social_id) && is_numeric($data->obra_social_id)) ? intval($data->obra_social_id) : null;
             $plan_id = (!empty($data->plan_id) && is_numeric($data->plan_id)) ? intval($data->plan_id) : null;
-            $rol = !empty($data->rol) ? trim($data->rol) : 'paciente';
+            $rol = 'paciente';
             $fuid = 'admin_created_' . time() . '_' . rand(100, 999);
 
             // Verificar si el email ya existe
@@ -66,6 +64,9 @@ switch ($method) {
                 echo json_encode(["message" => "Ya existe un usuario con este correo electrónico."]);
                 exit();
             }
+            $chkDni = $db->prepare("SELECT id FROM usuarios WHERE REGEXP_REPLACE(dni, '[^0-9]', '') = :dni");
+            $chkDni->execute([':dni'=>$dni]);
+            if ($chkDni->fetchColumn()) { http_response_code(409); echo json_encode(['message'=>'Ya existe una ficha con ese DNI.']); exit(); }
 
             $query = "INSERT INTO usuarios (firebase_uid, nombre, apellido, email, dni, fecha_nacimiento, telefono, obra_social_id, plan_id, rol)
                       VALUES (:fuid, :nombre, :apellido, :email, :dni, :fecha_nac, :tel, :os_id, :pl_id, :rol)";
@@ -101,9 +102,9 @@ switch ($method) {
         if (!empty($data->id)) {
             // Si solo vino 'rol' (compatibilidad con select inline anterior)
             if (isset($data->rol) && !isset($data->nombre)) {
-                if ($data->rol === 'superadmin' && $_SESSION['rol'] !== 'superadmin') {
+                if ($_SESSION['rol'] !== 'superadmin' || !in_array($data->rol, ['superadmin','admin','recepcionista','medico','paciente'], true)) {
                     http_response_code(403);
-                    echo json_encode(array("message" => "Solo un superadmin puede crear otro superadmin."));
+                    echo json_encode(array("message" => "Solo un superadmin puede cambiar roles y debe elegir un rol válido."));
                     exit();
                 }
                 $query = "UPDATE usuarios SET rol = :rol WHERE id = :id";
@@ -122,12 +123,17 @@ switch ($method) {
             // Actualización completa de datos del paciente
             $nombre = trim($data->nombre ?? '');
             $apellido = trim($data->apellido ?? '');
-            $dni = !empty($data->dni) ? trim($data->dni) : null;
+            $dni = normalize_dni($data->dni ?? '');
+            if (!valid_dni($dni)) { http_response_code(400); echo json_encode(['message'=>'El DNI debe tener 7 u 8 números.']); exit(); }
             $fecha_nacimiento = !empty($data->fecha_nacimiento) ? trim($data->fecha_nacimiento) : null;
             $telefono = !empty($data->telefono) ? trim($data->telefono) : null;
             $email = trim($data->email ?? '');
             $obra_social_id = (!empty($data->obra_social_id) && is_numeric($data->obra_social_id)) ? intval($data->obra_social_id) : null;
             $plan_id = (!empty($data->plan_id) && is_numeric($data->plan_id)) ? intval($data->plan_id) : null;
+
+            $dup = $db->prepare("SELECT id FROM usuarios WHERE REGEXP_REPLACE(dni, '[^0-9]', '') = :dni AND id <> :id LIMIT 1");
+            $dup->execute([':dni'=>$dni, ':id'=>$data->id]);
+            if ($dup->fetchColumn()) { http_response_code(409); echo json_encode(['message'=>'Ya existe otra ficha con ese DNI.']); exit(); }
 
             $query = "UPDATE usuarios 
                       SET nombre = :nombre, 

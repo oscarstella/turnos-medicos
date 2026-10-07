@@ -1,5 +1,14 @@
 // Determinar a dónde redirigir según el rol del usuario y sus turnos pendientes
 async function redirigirSegunRol(u, urlParams) {
+    if (urlParams.get('redirect') === 'confirmar_turno') {
+        try {
+            const pending = JSON.parse(localStorage.getItem('turno_pendiente') || 'null');
+            if (pending && pending.medicoId) {
+                window.location.href = `agendar.php?medico_id=${encodeURIComponent(pending.medicoId)}&resume=1`;
+                return;
+            }
+        } catch (_) {}
+    }
     if (urlParams.get('redirect') === 'agendar' && urlParams.get('medico_id')) {
         window.location.href = 'agendar.php?medico_id=' + urlParams.get('medico_id');
         return;
@@ -23,9 +32,7 @@ async function redirigirSegunRol(u, urlParams) {
         }
 
         // Si no viene calculado en el objeto, consultar get_mis_turnos.php
-        const fuid = u.firebase_uid || u.uid || '';
-        const email = u.email || '';
-        const resp = await fetch(`backend/api/get_mis_turnos.php?firebase_uid=${encodeURIComponent(fuid)}&email=${encodeURIComponent(email)}`, {
+        const resp = await fetch('backend/api/get_mis_turnos.php', {
             credentials: 'same-origin'
         });
         const turnos = await resp.json().catch(() => []);
@@ -94,54 +101,54 @@ if (loginForm) {
         }
 
         try {
-            // Intentar primero autenticación local con DB (soporta DNI o Email)
-            const resp = await fetch(`${API_URL}/db_login.php`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: identifier, password: password })
-            });
-            const dbData = await resp.json().catch(() => ({}));
-
-            if (dbData.status === 'success' && dbData.user) {
-                localStorage.setItem('user', JSON.stringify(dbData.user));
-                const urlParams = new URLSearchParams(window.location.search);
-                redirigirSegunRol(dbData.user, urlParams);
-                return;
-            }
-
-            // Si el backend indica que debe autenticarse con Firebase o no se encontró contraseña local
-            const firebaseEmail = (dbData.email && dbData.email.includes('@')) ? dbData.email : identifier;
-            if (!firebaseEmail.includes('@')) {
-                showError(dbData.message || 'Contraseña o credenciales incorrectas.');
-                return;
-            }
-
-            // Intentar login con Firebase usando el email resuelto
-            auth.signInWithEmailAndPassword(firebaseEmail, password)
-                .then((userCredential) => {
-                    handleBackendLogin(userCredential.user);
-                })
-                .catch((fbErr) => {
-                    showError('Error al iniciar sesión: ' + (dbData.message || fbErr.message));
+            if (/^\d[\d.\s-]*$/.test(identifier)) {
+                const response = await fetch(`${API_URL}/firebase_login.php`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dni: identifier, password })
                 });
-
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.id_token) throw new Error(result.message || 'DNI o contraseña incorrectos.');
+                await handleBackendToken(result.id_token);
+            } else {
+                const userCredential = await auth.signInWithEmailAndPassword(identifier, password);
+                if (!userCredential.user.emailVerified) {
+                    await userCredential.user.sendEmailVerification();
+                    showError('Verificá tu correo electrónico desde el enlace que te enviamos y después iniciá sesión nuevamente.');
+                    await auth.signOut();
+                    return;
+                }
+                const pendingProfile = JSON.parse(localStorage.getItem('pending_patient_profile') || 'null') || {};
+                await handleBackendLogin(userCredential.user, pendingProfile);
+                localStorage.removeItem('pending_patient_profile');
+            }
         } catch (err) {
-            showError('Error al conectar con el servidor.');
+            showError(err.message || 'Error al conectar con el servidor.');
         }
     });
 }
 
 // Reutilizable para enviar datos extra al backend
-function handleBackendLogin(user, extraData = {}) {
-    fetch(`${API_URL}/auth.php`, {
+async function handleBackendLogin(user, extraData = {}) {
+    const token = await user.getIdToken();
+    try {
+        return await handleBackendToken(token, extraData);
+    } catch (error) {
+        if (!/DNI válido/.test(error.message)) throw error;
+        const dni = window.prompt('Para completar tu ficha, ingresá tu DNI (solo para asociarlo a tu cuenta verificada de Firebase):');
+        if (!dni) throw error;
+        return handleBackendToken(token, { ...extraData, dni });
+    }
+}
+
+async function handleBackendToken(idToken, extraData = {}) {
+    const response = await fetch(`${API_URL}/auth.php`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({
-            firebase_uid: user.uid,
-            email: user.email,
-            nombre: extraData.nombre || user.displayName || user.email.split('@')[0],
+            nombre: extraData.nombre || '',
             apellido: extraData.apellido || "",
             dni: extraData.dni || null,
             fecha_nacimiento: extraData.fecha_nacimiento || null,
@@ -149,22 +156,12 @@ function handleBackendLogin(user, extraData = {}) {
             obra_social_id: extraData.obra_social_id || null,
             plan_id: extraData.plan_id || null
         })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if(data.user) {
-            localStorage.setItem('user', JSON.stringify(data.user));
-            
-            // Check for redirect params
-            const urlParams = new URLSearchParams(window.location.search);
-            redirigirSegunRol(data.user, urlParams);
-        } else {
-            showError(data.message || 'Error al conectar con el servidor.');
-        }
-    })
-    .catch(error => {
-        showError('Ocurrió un error en el servidor.');
     });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.user) throw new Error(data.message || 'No se pudo vincular la cuenta.');
+    localStorage.setItem('user', JSON.stringify(data.user));
+    const urlParams = new URLSearchParams(window.location.search);
+    redirigirSegunRol(data.user, urlParams);
 }
 
 // Cargar Obras Sociales para el registro de paciente
@@ -222,7 +219,7 @@ if (regOsSelect && regPlSelect) {
 // Registro Completo de Paciente
 const registerForm = document.getElementById('register-form');
 if(registerForm) {
-    registerForm.addEventListener('submit', (e) => {
+    registerForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
         const osSelect = document.getElementById('reg-obra-social');
@@ -239,25 +236,24 @@ if(registerForm) {
         const email = document.getElementById('reg-email').value;
         const password = document.getElementById('reg-password').value;
 
-        auth.createUserWithEmailAndPassword(email, password)
-            .then((userCredential) => {
-                handleBackendLogin(userCredential.user, extraData);
-            })
-            .catch((error) => {
-                showError('Error al crear cuenta: ' + error.message);
-            });
+        try {
+            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+            localStorage.setItem('pending_patient_profile', JSON.stringify(extraData));
+            await userCredential.user.sendEmailVerification();
+            await auth.signOut();
+            showError('Te enviamos un correo para verificar la cuenta. Abrí el enlace y luego iniciá sesión para terminar de vincular tu DNI.');
+        } catch (error) {
+            showError('No se pudo crear la cuenta: ' + error.message);
+        }
     });
 }
 
 // Login con Google
 if(googleLoginBtn) {
-    googleLoginBtn.addEventListener('click', () => {
+    googleLoginBtn.addEventListener('click', async () => {
         auth.signInWithPopup(googleProvider)
             .then((result) => {
-                // El login de google no tiene DNI ni los otros campos en esta etapa,
-                // idealmente se debería redirigir a "Completar Perfil". 
-                // Por ahora se envía lo básico.
-                handleBackendLogin(result.user);
+                return handleBackendLogin(result.user);
             })
             .catch((error) => {
                 showError('Error al iniciar sesión con Google: ' + error.message);

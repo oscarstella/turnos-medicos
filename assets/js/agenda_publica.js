@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     col.className = 'col-12 col-md-6 col-lg-4 col-xl-3 d-flex';
                     
                     // Especialidades
-                    const especialidadesText = medico.especialidades.map(e => e.nombre).join(', ') || 'Medicina General';
+                    const especialidadesText = escapeHtml((medico.especialidades || []).map(e => e.nombre).join(', ') || 'Medicina General');
                     
                     // Botón Coberturas
                     const cantCoberturas = medico.obras_sociales ? medico.obras_sociales.length : 0;
@@ -236,16 +236,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                     data-calle="${encodeURIComponent(h.unidad_calle || '')}" 
                                     data-numero="${encodeURIComponent(h.unidad_numero || '')}" 
                                     data-localidad="${encodeURIComponent(h.unidad_localidad || '')}"
-                                    data-lat="${h.unidad_latitud || ''}"
-                                    data-lng="${h.unidad_longitud || ''}"
+                                    data-lat="${escapeHtml(h.unidad_latitud || '')}"
+                                    data-lng="${escapeHtml(h.unidad_longitud || '')}"
                                     onclick="abrirModalSedeDesdeBtn(this)" 
                                     title="Ver ubicación en Google Maps y cómo llegar">
-                                    <i class="bi bi-geo-alt-fill text-danger me-1"></i>${h.unidad_nombre}
+                                    <i class="bi bi-geo-alt-fill text-danger me-1"></i>${escapeHtml(h.unidad_nombre)}
                                    </button>` 
                                 : '';
                             horariosHtml += `
                                 <div class="small mb-1 d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
-                                    <span><i class="bi bi-clock me-1 text-primary"></i> <strong>${h.dia_semana}:</strong> ${inicio} a ${fin} hs</span>
+                                    <span><i class="bi bi-clock me-1 text-primary"></i> <strong>${escapeHtml(h.dia_semana)}:</strong> ${escapeHtml(inicio)} a ${escapeHtml(fin)} hs</span>
                                     ${sedeTxt}
                                 </div>`;
                         });
@@ -257,17 +257,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     const nombreLimpio = limpiarNombre(medico.nombre);
                     const apellidoLimpio = limpiarNombre(medico.apellido);
                     const avatarDefault = obtenerAvatarDefault(nombreLimpio, apellidoLimpio);
-                    const fotoUrl = (medico.foto_perfil && medico.foto_perfil.trim() !== '') 
+                    const fotoUrlRaw = (medico.foto_perfil && medico.foto_perfil.trim() !== '')
                         ? medico.foto_perfil 
                         : ((medico.foto_url && medico.foto_url.trim() !== '') ? medico.foto_url : avatarDefault);
+                    const fotoUrl = escapeHtml(safeImageUrl(fotoUrlRaw, avatarDefault));
 
                     col.innerHTML = `
                         <div class="card w-100 border-0 shadow-sm glass-card hover-lift" style="border-radius: 1rem; overflow: hidden; transition: transform 0.3s ease, box-shadow 0.3s ease;">
                             <div class="text-center pt-4 pb-2" style="background: rgba(248,249,250,0.5);">
-                                <img src="${fotoUrl}" alt="Dr. ${apellidoLimpio}" class="rounded-circle shadow-sm border border-3 border-white" style="width: 120px; height: 120px; object-fit: cover;" onerror="this.onerror=null; this.src='${avatarDefault}';">
+                            <img src="${fotoUrl}" alt="Dr. ${escapeHtml(apellidoLimpio)}" class="rounded-circle shadow-sm border border-3 border-white" style="width: 120px; height: 120px; object-fit: cover;" onerror="this.onerror=null; this.src='${escapeHtml(avatarDefault)}';">
                             </div>
                             <div class="card-body d-flex flex-column text-center">
-                                <h5 class="card-title fw-bold mb-1">${nombreLimpio} ${apellidoLimpio}</h5>
+                                <h5 class="card-title fw-bold mb-1">${escapeHtml(nombreLimpio)} ${escapeHtml(apellidoLimpio)}</h5>
                                 <h6 class="card-subtitle mb-3 text-primary fw-semibold">${especialidadesText}</h6>
                                 ${coberturasBtnHtml}
                                 <div class="bg-light rounded-3 p-2 mb-3 text-start" style="max-height: 140px; overflow-y: auto;">
@@ -310,7 +311,7 @@ function renderizarListaCoberturasModal(med, listContainer) {
             itemsHtml += `
                 <div class="list-group-item bg-transparent d-flex align-items-center py-2 border-0">
                     <i class="bi bi-shield-check text-success fs-5 me-2"></i>
-                    <span class="fw-medium text-dark">${os.nombre}</span>
+                    <span class="fw-medium text-dark">${escapeHtml(os.nombre)}</span>
                 </div>
             `;
         });
@@ -345,12 +346,12 @@ window.abrirModalCoberturasPaciente = function(medicoId) {
         const nomLimpio = limpiarNombre(med.nombre);
         const apeLimpio = limpiarNombre(med.apellido);
         const avatarDefault = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(nomLimpio + ' ' + apeLimpio) + '&background=e9ecef&color=6c757d&size=200';
-        const foto = (med.foto_perfil && med.foto_perfil.trim() !== '') ? med.foto_perfil : (med.foto_url || avatarDefault);
+        const foto = escapeHtml(safeImageUrl((med.foto_perfil && med.foto_perfil.trim() !== '') ? med.foto_perfil : (med.foto_url || avatarDefault), avatarDefault));
 
         infoContainer.innerHTML = `
-            <img src="${foto}" class="rounded-circle shadow-sm mb-2" style="width: 80px; height: 80px; object-fit: cover;" onerror="this.onerror=null; this.src='${avatarDefault}';">
-            <h5 class="fw-bold mb-0">${nomLimpio} ${apeLimpio}</h5>
-            <small class="text-primary fw-semibold">${(med.especialidades || []).map(e => e.nombre).join(', ') || 'Medicina General'}</small>
+            <img src="${foto}" class="rounded-circle shadow-sm mb-2" style="width: 80px; height: 80px; object-fit: cover;" onerror="this.onerror=null; this.src='${escapeHtml(avatarDefault)}';">
+            <h5 class="fw-bold mb-0">${escapeHtml(nomLimpio)} ${escapeHtml(apeLimpio)}</h5>
+            <small class="text-primary fw-semibold">${escapeHtml((med.especialidades || []).map(e => e.nombre).join(', ') || 'Medicina General')}</small>
         `;
         renderizarListaCoberturasModal(med, listContainer);
         btnAgendar.onclick = function() {
@@ -383,12 +384,12 @@ window.abrirModalCoberturasPaciente = function(medicoId) {
                 }
 
                 const avatarDefault = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(medActualizado.nombre + ' ' + medActualizado.apellido) + '&background=e9ecef&color=6c757d&size=200';
-                const foto = (medActualizado.foto_perfil && medActualizado.foto_perfil.trim() !== '') ? medActualizado.foto_perfil : (medActualizado.foto_url || avatarDefault);
+                const foto = escapeHtml(safeImageUrl((medActualizado.foto_perfil && medActualizado.foto_perfil.trim() !== '') ? medActualizado.foto_perfil : (medActualizado.foto_url || avatarDefault), avatarDefault));
 
                 infoContainer.innerHTML = `
-                    <img src="${foto}" class="rounded-circle shadow-sm mb-2" style="width: 80px; height: 80px; object-fit: cover;" onerror="this.onerror=null; this.src='${avatarDefault}';">
-                    <h5 class="fw-bold mb-0">${medActualizado.nombre} ${medActualizado.apellido}</h5>
-                    <small class="text-primary fw-semibold">${(medActualizado.especialidades || []).map(e => e.nombre).join(', ') || 'Medicina General'}</small>
+                    <img src="${foto}" class="rounded-circle shadow-sm mb-2" style="width: 80px; height: 80px; object-fit: cover;" onerror="this.onerror=null; this.src='${escapeHtml(avatarDefault)}';">
+                    <h5 class="fw-bold mb-0">${escapeHtml(medActualizado.nombre)} ${escapeHtml(medActualizado.apellido)}</h5>
+                    <small class="text-primary fw-semibold">${escapeHtml((medActualizado.especialidades || []).map(e => e.nombre).join(', ') || 'Medicina General')}</small>
                 `;
 
                 renderizarListaCoberturasModal(medActualizado, listContainer);
@@ -414,4 +415,10 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
+}
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+function safeImageUrl(value, fallback) {
+    const candidate = String(value || fallback || '');
+    try { const parsed = new URL(candidate, window.location.href); return ['http:','https:'].includes(parsed.protocol) ? parsed.href : fallback; }
+    catch (_) { return fallback; }
 }

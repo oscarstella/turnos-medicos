@@ -1,6 +1,5 @@
 <?php
-session_start();
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/_auth.php';
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
@@ -15,19 +14,6 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['rol'], ['superadmin', '
 
 $database = new Database();
 $db = $database->getConnection();
-
-// Auto-healing: crear tabla si no existe (evita errores de JOIN)
-try {
-    $db->exec("CREATE TABLE IF NOT EXISTS unidades_atencion (
-        id INT AUTO_INCREMENT PRIMARY KEY, nombre VARCHAR(150) NOT NULL,
-        calle VARCHAR(150) NULL, numero VARCHAR(20) NULL, localidad VARCHAR(100) NULL,
-        activa TINYINT(1) DEFAULT 1, creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
-    $cols = $db->query("SHOW COLUMNS FROM horarios_medicos LIKE 'unidad_id'")->fetchAll();
-    if(empty($cols)) {
-        $db->exec("ALTER TABLE horarios_medicos ADD COLUMN unidad_id INT NULL");
-    }
-} catch(Exception $e) { /* silencioso */ }
 
 // Traer todos los usuarios que son médicos
 $query = "

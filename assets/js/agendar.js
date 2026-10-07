@@ -1,6 +1,11 @@
 // ==========================================
 // LÓGICA DEL WIZARD DE RESERVA (PÚBLICO)
 // ==========================================
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+function safeImageUrl(value, fallback) {
+    try { const parsed = new URL(String(value || fallback || ''), window.location.href); return ['http:','https:'].includes(parsed.protocol) ? parsed.href : fallback; }
+    catch (_) { return fallback; }
+}
 
 let wizardData = {
     medicoId: null,
@@ -203,6 +208,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function iniciarWizardReserva(medicoId) {
     wizardData.medicoId = medicoId;
+    const urlParams = new URLSearchParams(window.location.search);
+    let pending = null;
+    if (urlParams.get('resume') === '1') {
+        try { pending = JSON.parse(localStorage.getItem('turno_pendiente') || 'null'); } catch (_) {}
+    }
     
     // Fetch de datos del médico para llenar la barra superior
     fetch(`backend/api/get_public_agenda.php?medico_id=${medicoId}`)
@@ -224,6 +234,16 @@ function iniciarWizardReserva(medicoId) {
                 wizardData.especialidadId = med.especialidades && med.especialidades.length > 0
                     ? med.especialidades[0].especialidad_id
                     : null;
+
+                if (pending && String(pending.medicoId) === String(medicoId)) {
+                    ['coberturaId','coberturaNombre','planId','planNombre','fecha','hora','unidadId','sedeNombre'].forEach(key => {
+                        if (typeof pending[key] !== 'undefined') wizardData[key] = pending[key];
+                    });
+                    const coverageLabel = document.getElementById('wizard-cobertura-nombre');
+                    if (coverageLabel) { coverageLabel.textContent = wizardData.coberturaNombre || 'Seleccionar...'; coverageLabel.classList.remove('text-muted'); }
+                    ['wizard-step-1','wizard-step-2','wizard-step-3'].forEach(id => document.getElementById(id)?.classList.add('d-none'));
+                    document.getElementById('wizard-step-4')?.classList.remove('d-none');
+                }
                 
                 document.getElementById('wizard-medico-nombre').textContent = nombreCompleto;
                 document.getElementById('wizard-medico-nombre-q').textContent = nombreCompleto;
@@ -234,11 +254,12 @@ function iniciarWizardReserva(medicoId) {
                 const defaultAvatar = obtenerAvatarDefault(nomLimpio, apeLimpio);
                 if (avatarContainer) {
                     if (foto && foto.trim() !== '') {
-                        avatarContainer.innerHTML = `<img src="${foto}" alt="${nombreCompleto}" class="w-100 h-100 object-fit-cover" onerror="this.onerror=null;this.src='${defaultAvatar}';">`;
+                        avatarContainer.innerHTML = `<img src="${escapeHtml(safeImageUrl(foto, defaultAvatar))}" alt="${escapeHtml(nombreCompleto)}" class="w-100 h-100 object-fit-cover" onerror="this.onerror=null;this.src='${escapeHtml(defaultAvatar)}';">`;
                     } else {
                         avatarContainer.innerHTML = `<img src="${defaultAvatar}" alt="${nombreCompleto}" class="w-100 h-100 object-fit-cover">`;
                     }
                 }
+                if (pending && String(pending.medicoId) === String(medicoId)) wizardRenderCalendarioMock();
             } else {
                 alert("Profesional no encontrado.");
                 window.location.href = 'index.php';
@@ -351,7 +372,7 @@ window.wizardCargarObrasSociales = function() {
                     btn.style.border = '1px solid rgba(0,0,0,0.05)';
                     btn.style.transition = 'all 0.3s ease';
                     
-                    btn.innerHTML = `<span class="fw-semibold text-primary mb-2">${osNombre}</span>
+                    btn.innerHTML = `<span class="fw-semibold text-primary mb-2">${escapeHtml(osNombre)}</span>
                                      <small class="text-muted" style="font-size: 0.75rem;">
                                        Seleccionar
                                      </small>`;
@@ -523,9 +544,15 @@ window.wizardRenderCalendarioMock = function() {
 
     fetch('backend/api/config.php')
         .then(res => res.json())
-        .then(config => {
+        .then(async config => {
             const mesesAgenda = parseInt(config.meses_agenda) || 3;
             const diasTotales = mesesAgenda * 30; // approx
+            const hasta = new Date();
+            hasta.setDate(hasta.getDate() + diasTotales);
+            const fechaIso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            const disponibilidadResp = await fetch(`backend/api/get_disponibilidad.php?medico_id=${encodeURIComponent(wizardData.medicoId)}&desde=${encodeURIComponent(fechaIso(new Date()))}&hasta=${encodeURIComponent(fechaIso(hasta))}`);
+            if (!disponibilidadResp.ok) throw new Error('No se pudo consultar la disponibilidad.');
+            wizardData.disponibilidad = await disponibilidadResp.json();
             container.innerHTML = '';
             
             const hoy = new Date();
@@ -596,23 +623,11 @@ window.wizardRenderCalendarioMock = function() {
                     continue;
                 }
 
-                // Calcular cantidad real de turnos disponibles según horarios y duración seteada
-                let cupos = 0;
-                bloquesDelDia.forEach(bloque => {
-                    const duracion = parseInt(bloque.duracion_turno_minutos) || 30;
-                    const [hIni, mIni] = (bloque.hora_inicio || '08:00').split(':').map(Number);
-                    let [hFin, mFin] = (bloque.hora_fin || '12:00').split(':').map(Number);
-                    if (hFin === 0 && mFin === 0) hFin = 14;
-                    let cur = hIni * 60 + mIni;
-                    const end = hFin * 60 + mFin;
-                    while (cur + duracion <= end) {
-                        cupos++;
-                        cur += duracion;
-                    }
-                });
+                const fechaDelDia = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                const cupos = (wizardData.disponibilidad || []).filter(slot => slot.fecha === fechaDelDia).length;
                 
                 const btn = document.createElement('button');
-                btn.className = 'btn btn-outline-primary m-2 d-flex flex-column align-items-center justify-content-center shadow-sm';
+                btn.className = `btn ${cupos ? 'btn-outline-primary' : 'btn-light text-muted opacity-50'} m-2 d-flex flex-column align-items-center justify-content-center shadow-sm`;
                 btn.style.width = '110px';
                 btn.style.height = '110px';
                 btn.style.borderRadius = '20px';
@@ -623,6 +638,13 @@ window.wizardRenderCalendarioMock = function() {
                     <span class="fs-2 fw-bolder mb-1">${diaNumero}</span>
                     <small class="text-muted" style="font-size:0.7rem">${cupos} turnos</small>
                 `;
+                if (!cupos) {
+                    btn.disabled = true;
+                    btn.style.cursor = 'not-allowed';
+                    btn.querySelector('small').textContent = 'Sin turnos';
+                    monthContainer.appendChild(btn);
+                    continue;
+                }
                 
                 btn.onclick = () => {
                     const yaSeleccionado = btn.classList.contains('btn-primary');
@@ -656,6 +678,22 @@ window.wizardRenderCalendarioMock = function() {
                 };
                 
                 monthContainer.appendChild(btn);
+            }
+            const resumeParams = new URLSearchParams(window.location.search);
+            if (resumeParams.get('resume') === '1' && !wizardData.resumeOpened) {
+                wizardData.resumeOpened = true;
+                let pendingTurno = null;
+                try { pendingTurno = JSON.parse(localStorage.getItem('turno_pendiente') || 'null'); } catch (_) {}
+                if (pendingTurno && pendingTurno.fecha && pendingTurno.hora) {
+                    const selectedDate = new Date(`${pendingTurno.fecha}T12:00:00`);
+                    if (!Number.isNaN(selectedDate.getTime())) {
+                        wizardAbrirModalHorarios(selectedDate);
+                        const wantedTime = String(pendingTurno.hora).slice(0,5) + ' hs';
+                        const timeButton = [...document.querySelectorAll('#modal-horarios-list .btn')].find(b => b.textContent.trim() === wantedTime);
+                        if (timeButton) timeButton.click();
+                        else alert('El horario que habías elegido ya no está libre. Elegí uno de los horarios disponibles.');
+                    }
+                }
             }
         })
         .catch(err => {
@@ -708,12 +746,12 @@ window.wizardAbrirModalHorarios = function(dateObj) {
                     data-calle="${encodeURIComponent(primerH.unidad_calle || '')}" 
                     data-numero="${encodeURIComponent(primerH.unidad_numero || '')}" 
                     data-localidad="${encodeURIComponent(loc)}"
-                    data-lat="${primerH.unidad_latitud || ''}"
-                    data-lng="${primerH.unidad_longitud || ''}"
+                    data-lat="${escapeHtml(primerH.unidad_latitud || '')}"
+                    data-lng="${escapeHtml(primerH.unidad_longitud || '')}"
                     onclick="abrirModalSedeDesdeBtn(this)"
                     title="Ver ubicación en Google Maps y cómo llegar"
                     style="cursor:pointer;">
-                    <i class="bi bi-geo-alt-fill text-danger me-1"></i> ${primerH.unidad_nombre}${dir ? ' — ' + dir : ''} <span class="badge bg-primary text-white ms-1" style="font-size:0.68rem;"><i class="bi bi-map me-1"></i>Ver Mapa</span>
+                    <i class="bi bi-geo-alt-fill text-danger me-1"></i> ${escapeHtml(primerH.unidad_nombre)}${dir ? ' — ' + escapeHtml(dir) : ''} <span class="badge bg-primary text-white ms-1" style="font-size:0.68rem;"><i class="bi bi-map me-1"></i>Ver Mapa</span>
                 </button>
             `;
             sedeBanner.classList.remove('d-none');
@@ -722,48 +760,32 @@ window.wizardAbrirModalHorarios = function(dateObj) {
             sedeBanner.classList.add('d-none');
         }
 
-        // Generar slots basados en hora_inicio, hora_fin y duracion_turno_minutos
-        horariosDelDia.forEach(bloque => {
-            const duracion = parseInt(bloque.duracion_turno_minutos) || 30;
-            const [hIni, mIni] = (bloque.hora_inicio || '08:00').split(':').map(Number);
-            const [hFin, mFin] = (bloque.hora_fin || '12:00').split(':').map(Number);
-            
-            let cur = hIni * 60 + mIni;
-            const end = hFin * 60 + mFin;
-            
-            let haySlots = false;
-            while(cur + duracion <= end) {
-                haySlots = true;
-                const hr = Math.floor(cur / 60);
-                const mn = cur % 60;
-                const timeStr = `${String(hr).padStart(2, '0')}:${String(mn).padStart(2, '0')}`;
-                
-                const btn = document.createElement('button');
-                btn.className = 'btn btn-outline-primary px-4 py-2 fw-bold shadow-sm rounded-pill';
-                btn.textContent = timeStr + ' hs';
-                btn.onclick = () => {
-                    document.querySelectorAll('#modal-horarios-list .btn').forEach(b => {
-                        b.classList.remove('btn-primary', 'text-white');
-                        b.classList.add('btn-outline-primary');
-                    });
-                    btn.classList.remove('btn-outline-primary');
-                    btn.classList.add('btn-primary', 'text-white');
-                    wizardData.hora = timeStr;
-                    wizardData.unidadId = bloque.unidad_id || null;
-                    wizardData.sedeNombre = bloque.unidad_nombre || '';
-                    if (infoHora && textoHora) {
-                        textoHora.textContent = timeStr + ' hs';
-                        infoHora.classList.remove('d-none');
-                    }
-                    btnConfirmar.classList.remove('d-none');
-                };
-                list.appendChild(btn);
-                cur += duracion;
-            }
-            if (!haySlots) {
-                list.innerHTML = `<div class="p-3 text-muted">No hay horarios disponibles en el rango de atención.</div>`;
-            }
+        const fechaSeleccionada = `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
+        const slots = (wizardData.disponibilidad || []).filter(slot => slot.fecha === fechaSeleccionada);
+        slots.forEach(slot => {
+            const bloque = horariosDelDia.find(h => String(h.unidad_id || '') === String(slot.unidad_id)) || primerH;
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-outline-primary px-4 py-2 fw-bold shadow-sm rounded-pill';
+            btn.textContent = slot.hora_inicio + ' hs';
+            btn.onclick = () => {
+                document.querySelectorAll('#modal-horarios-list .btn').forEach(b => {
+                    b.classList.remove('btn-primary', 'text-white');
+                    b.classList.add('btn-outline-primary');
+                });
+                btn.classList.remove('btn-outline-primary');
+                btn.classList.add('btn-primary', 'text-white');
+                wizardData.hora = slot.hora_inicio;
+                wizardData.unidadId = slot.unidad_id;
+                wizardData.sedeNombre = bloque.unidad_nombre || '';
+                if (infoHora && textoHora) {
+                    textoHora.textContent = slot.hora_inicio + ' hs';
+                    infoHora.classList.remove('d-none');
+                }
+                btnConfirmar.classList.remove('d-none');
+            };
+            list.appendChild(btn);
         });
+        if (!slots.length) list.innerHTML = '<div class="p-3 text-muted">No quedan turnos disponibles ese día. Actualizá la agenda.</div>';
     } else {
         sedeBanner.innerHTML = '';
         sedeBanner.classList.add('d-none');
@@ -798,7 +820,7 @@ document.getElementById('btn-cambiar-cobertura').addEventListener('click', () =>
 });
 
 // Confirmar Turno
-document.getElementById('wizard-btn-confirmar').addEventListener('click', () => {
+document.getElementById('wizard-btn-confirmar').addEventListener('click', async () => {
     const localUser = JSON.parse(localStorage.getItem('user') || 'null');
     const currentUser = auth.currentUser || localUser;
     
@@ -811,10 +833,11 @@ document.getElementById('wizard-btn-confirmar').addEventListener('click', () => 
         const cobId = (wizardData.coberturaId && wizardData.coberturaId !== 'particular' && !isNaN(parseInt(wizardData.coberturaId))) ? parseInt(wizardData.coberturaId) : null;
         const plId = (wizardData.planId && !isNaN(parseInt(wizardData.planId))) ? parseInt(wizardData.planId) : null;
 
+        const idToken = auth.currentUser ? await auth.currentUser.getIdToken() : null;
         fetch('backend/api/save_turno.php', {
             method: 'POST',
             credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
+            headers: Object.assign({ 'Content-Type': 'application/json' }, idToken ? { 'Authorization': `Bearer ${idToken}` } : {}),
             body: JSON.stringify({
                 medico_id: wizardData.medicoId,
                 especialidad_id: wizardData.especialidadId,
@@ -823,8 +846,6 @@ document.getElementById('wizard-btn-confirmar').addEventListener('click', () => 
                 unidad_id: wizardData.unidadId || null,
                 fecha: wizardData.fecha,
                 hora: wizardData.hora,
-                firebase_uid: currentUser ? (currentUser.uid || currentUser.firebase_uid || null) : null,
-                email: currentUser ? currentUser.email : null
             })
         })
         .then(async res => {

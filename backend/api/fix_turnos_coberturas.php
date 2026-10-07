@@ -1,7 +1,12 @@
 <?php
+require_once __DIR__ . '/_auth.php';
 require_once __DIR__ . '/../config/database.php';
 
 header('Content-Type: application/json; charset=UTF-8');
+
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['rol'] ?? '', ['superadmin','admin'], true)) {
+    http_response_code(403); echo json_encode(['status'=>'error','message'=>'Acceso denegado.']); exit;
+}
 
 $database = new Database();
 $db = $database->getConnection();
@@ -68,5 +73,5 @@ try {
         "swiss_medical_id" => $sm_id
     ]);
 } catch (Throwable $e) {
-    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    echo json_encode(["status" => "error", "message" => "No se pudo completar la corrección de coberturas."]);
 }

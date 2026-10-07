@@ -1,6 +1,5 @@
 <?php
-session_start();
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/_auth.php';
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET, POST");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
@@ -55,7 +54,7 @@ if ($method === 'GET') {
         } catch(PDOException $e) {
             $db->rollBack();
             http_response_code(503);
-            echo json_encode(array("message" => "Error guardando configuración.", "error" => $e->getMessage()));
+            echo json_encode(array("message" => "No se pudo guardar la configuración."));
         }
     } else {
         http_response_code(400);

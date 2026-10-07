@@ -79,7 +79,7 @@
                             </div>
                             <div class="row g-2 text-start">
                                 <div class="col-md-6 form-floating mb-2">
-                                    <input type="number" class="form-control" id="reg-dni" placeholder="DNI sin puntos" required>
+                                    <input type="text" inputmode="numeric" pattern="[0-9. -]{7,12}" maxlength="12" class="form-control" id="reg-dni" placeholder="DNI sin puntos" autocomplete="off" required>
                                     <label for="reg-dni">DNI</label>
                                 </div>
                                 <div class="col-md-6 form-floating mb-2">

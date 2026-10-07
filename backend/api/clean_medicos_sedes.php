@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/_auth.php';
 
 function ejecutarLimpiezaMedicosSedes($db) {
     // 1. Asegurar tabla unidades_atencion
@@ -175,6 +176,9 @@ function ejecutarLimpiezaMedicosSedes($db) {
 // Si se ejecuta como endpoint directo vía HTTP:
 if (isset($_SERVER['SCRIPT_FILENAME']) && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
     header('Content-Type: application/json; charset=utf-8');
+    if (!isset($_SESSION['user_id']) || !in_array($_SESSION['rol'] ?? '', ['superadmin','admin'], true)) {
+        http_response_code(403); echo json_encode(['status'=>'error','message'=>'Acceso denegado.']); exit;
+    }
     try {
         $database = new Database();
         $db = $database->getConnection();
@@ -188,6 +192,7 @@ if (isset($_SERVER['SCRIPT_FILENAME']) && realpath(__FILE__) === realpath($_SERV
         ]);
     } catch (Exception $e) {
         http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        error_log('Falló la reparación manual de sedes.');
+        echo json_encode(['status' => 'error', 'message' => 'No se pudo completar la reparación.']);
     }
 }

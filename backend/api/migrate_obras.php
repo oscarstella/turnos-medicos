@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/_auth.php';
 header("Content-Type: text/html; charset=UTF-8");
 
 include_once '../config/database.php';
@@ -146,6 +146,7 @@ try {
 
 } catch (Exception $e) {
     $db->rollBack();
-    echo "<h3>Error durante la migración:</h3><p>" . $e->getMessage() . "</p>";
+    error_log('Falló la migración manual de coberturas.');
+    echo "<h3>No se pudo completar la migración.</h3>";
 }
 ?>
