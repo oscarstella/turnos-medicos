@@ -12,20 +12,32 @@ if (!$doctorId || !$from || !$to || $from->format('Y-m-d') !== $fromText || $to-
     http_response_code(400); echo json_encode(['message'=>'Parámetros de disponibilidad inválidos.']); exit;
 }
 try {
-    // Verificar si el médico tiene un límite propio de días o usar la configuración general
-    $doctorQuery = $db->prepare("SELECT id, dias_antelacion_agenda FROM usuarios WHERE id = :id AND rol = 'medico'");
+    // Verificar si el médico tiene un límite propio de días o día de apertura, o usar la configuración general
+    $doctorQuery = $db->prepare("SELECT id, dias_antelacion_agenda, dia_apertura_agenda FROM usuarios WHERE id = :id AND rol = 'medico'");
     $doctorQuery->execute([':id'=>$doctorId]);
     $doctorData = $doctorQuery->fetch(PDO::FETCH_ASSOC);
     if (!$doctorData) { echo json_encode([]); exit; }
 
+    // Si el médico tiene un día fijo de apertura cada mes (ej: día 10), y hoy aún no llegó ese día
+    $hoy = new DateTime('today', $tz);
+    if (!empty($doctorData['dia_apertura_agenda']) && (int)$doctorData['dia_apertura_agenda'] > 0) {
+        $diaApertura = (int)$doctorData['dia_apertura_agenda'];
+        $diaActual = (int)$hoy->format('j');
+        if ($diaActual < $diaApertura) {
+            // La agenda del mes aún no abrió
+            echo json_encode(['agenda_cerrada' => true, 'dia_apertura' => $diaApertura, 'slots' => []]);
+            exit;
+        }
+    }
+
     if (!empty($doctorData['dias_antelacion_agenda']) && (int)$doctorData['dias_antelacion_agenda'] > 0) {
         $daysAhead = (int)$doctorData['dias_antelacion_agenda'];
-        $maxDate = (new DateTime('today', $tz))->modify('+' . $daysAhead . ' days');
+        $maxDate = (clone $hoy)->modify('+' . $daysAhead . ' days');
     } else {
         $agendaConfig = $db->prepare("SELECT valor FROM configuracion WHERE clave = 'meses_agenda' LIMIT 1");
         $agendaConfig->execute();
-        $monthsAhead = max(1, min(12, (int)($agendaConfig->fetchColumn() ?: 3)));
-        $maxDate = (new DateTime('today', $tz))->modify('+' . $monthsAhead . ' months');
+        $monthsAhead = max(1, min(24, (int)($agendaConfig->fetchColumn() ?: 3)));
+        $maxDate = (clone $hoy)->modify('+' . $monthsAhead . ' months');
     }
 
     if ($to > $maxDate) $to = $maxDate;

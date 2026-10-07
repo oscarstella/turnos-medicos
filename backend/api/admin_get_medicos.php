@@ -15,17 +15,21 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['rol'], ['superadmin', '
 $database = new Database();
 $db = $database->getConnection();
 
-// Asegurar existencia de columna dias_antelacion_agenda en la tabla usuarios si aún no existe
+// Asegurar existencia de columnas de ventana y apertura de agenda en usuarios
 try {
     $colCheck = $db->query("SHOW COLUMNS FROM usuarios LIKE 'dias_antelacion_agenda'")->fetchAll();
     if (empty($colCheck)) {
         $db->exec("ALTER TABLE usuarios ADD COLUMN dias_antelacion_agenda INT NULL DEFAULT NULL");
     }
+    $colApertura = $db->query("SHOW COLUMNS FROM usuarios LIKE 'dia_apertura_agenda'")->fetchAll();
+    if (empty($colApertura)) {
+        $db->exec("ALTER TABLE usuarios ADD COLUMN dia_apertura_agenda INT NULL DEFAULT NULL");
+    }
 } catch (Exception $e) {}
 
 // Traer todos los usuarios que son médicos
 $query = "
-    SELECT u.id, u.nombre, u.apellido, u.email, u.telefono, u.foto_perfil, u.biografia, u.direccion, u.matricula, u.dias_antelacion_agenda
+    SELECT u.id, u.nombre, u.apellido, u.email, u.telefono, u.foto_perfil, u.biografia, u.direccion, u.matricula, u.dias_antelacion_agenda, u.dia_apertura_agenda
     FROM usuarios u
     WHERE u.rol = 'medico'
     ORDER BY u.nombre ASC

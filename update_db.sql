@@ -31,9 +31,14 @@ ALTER TABLE turnos
     ADD COLUMN plan_id INT NULL AFTER obra_social_id,
     ADD FOREIGN KEY (plan_id) REFERENCES planes_obras_sociales(id) ON DELETE SET NULL;
 
--- 6. Modificar la tabla turnos para aguantar nuevos estados si es necesario
+-- 6. Modificar la tabla turnos para aguantar nuevo estado asignado
 ALTER TABLE turnos 
-    MODIFY COLUMN estado ENUM('libre', 'pendiente', 'confirmado', 'asistio', 'ausente', 'cancelado') DEFAULT 'libre';
+    MODIFY COLUMN estado ENUM('libre', 'pendiente', 'confirmado', 'asignado', 'asistio', 'ausente', 'cancelado') DEFAULT 'asignado';
+
+-- 6b. Columnas de configuración de agenda por médico
+ALTER TABLE usuarios 
+    ADD COLUMN IF NOT EXISTS dias_antelacion_agenda INT NULL DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS dia_apertura_agenda INT NULL DEFAULT NULL;
 
 -- 7. Hacer que paciente_id sea NULL para permitir slots libres
 ALTER TABLE turnos MODIFY paciente_id INT NULL;

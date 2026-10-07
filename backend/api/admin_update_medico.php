@@ -14,6 +14,15 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['rol'], ['superadmin', '
 
 $database = new Database();
 $db = $database->getConnection();
+
+// Asegurar existencia de columna dia_apertura_agenda en usuarios
+try {
+    $colApertura = $db->query("SHOW COLUMNS FROM usuarios LIKE 'dia_apertura_agenda'")->fetchAll();
+    if (empty($colApertura)) {
+        $db->exec("ALTER TABLE usuarios ADD COLUMN dia_apertura_agenda INT NULL DEFAULT NULL");
+    }
+} catch (Exception $e) {}
+
 $data = json_decode(file_get_contents("php://input"));
 
 if(!empty($data->id)) {
@@ -51,6 +60,13 @@ if(!empty($data->id)) {
             : null;
         $updates[] = "dias_antelacion_agenda = :dias_antelacion_agenda";
         $params[':dias_antelacion_agenda'] = $diasVal;
+    }
+    if(property_exists($data, 'dia_apertura_agenda')) {
+        $diaAperturaVal = ($data->dia_apertura_agenda !== null && $data->dia_apertura_agenda !== '') 
+            ? max(1, min(31, intval($data->dia_apertura_agenda))) 
+            : null;
+        $updates[] = "dia_apertura_agenda = :dia_apertura_agenda";
+        $params[':dia_apertura_agenda'] = $diaAperturaVal;
     }
     
     if(count($updates) > 0) {

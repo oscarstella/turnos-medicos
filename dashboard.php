@@ -247,7 +247,7 @@
                                 <small class="text-muted" id="agenda-admin-medico-subtitulo"></small>
                             </div>
                         </div>
-                        <!-- Pestañas Horarios vs Turnos Asignados -->
+                        <!-- Pestañas Horarios vs Turnos Asignados vs Reglas de Agenda -->
                         <ul class="nav nav-tabs card-header-tabs" id="agendaAdminTabs" role="tablist">
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link active fw-semibold" id="tab-turnos-asignados-tab" data-bs-toggle="tab" data-bs-target="#tab-turnos-asignados" type="button" role="tab">
@@ -256,7 +256,12 @@
                             </li>
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link fw-semibold" id="tab-horarios-atencion-tab" data-bs-toggle="tab" data-bs-target="#tab-horarios-atencion" type="button" role="tab">
-                                    <i class="bi bi-clock-history me-1 text-primary"></i> Configuración de Horarios
+                                    <i class="bi bi-clock-history me-1 text-primary"></i> Días y Horarios de Atención
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link fw-semibold" id="tab-reglas-agenda-tab" data-bs-toggle="tab" data-bs-target="#tab-reglas-agenda" type="button" role="tab">
+                                    <i class="bi bi-calendar-range me-1 text-primary"></i> Ventana y Apertura de Agenda
                                 </button>
                             </li>
                         </ul>
@@ -270,9 +275,10 @@
                                         <span class="badge bg-primary-subtle text-primary border px-3 py-2 fs-6 fw-bold" id="badge-total-turnos-medico">0 turnos</span>
                                         <div class="btn-group btn-group-sm">
                                             <button type="button" class="btn btn-outline-secondary active btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('todos', this)">Todos</button>
+                                            <button type="button" class="btn btn-outline-info btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('asignado', this)">Asignados</button>
                                             <button type="button" class="btn btn-outline-success btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('confirmado', this)">Confirmados</button>
                                             <button type="button" class="btn btn-outline-warning btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('pendiente', this)">Pendientes</button>
-                                            <button type="button" class="btn btn-outline-info btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('asistio', this)">Asistió</button>
+                                            <button type="button" class="btn btn-outline-primary btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('asistio', this)">Asistió</button>
                                             <button type="button" class="btn btn-outline-danger btn-filtro-estado-agenda" onclick="filtrarTurnosAgendaMedico('cancelado', this)">Cancelados</button>
                                         </div>
                                     </div>
@@ -319,6 +325,71 @@
                                     <button type="button" class="btn btn-primary rounded-pill px-4 py-2 fw-bold" onclick="guardarHorariosMedicoInline()">
                                         <i class="bi bi-check-lg me-1"></i> Guardar Cambios de Horarios
                                     </button>
+                                </div>
+                            </div>
+
+                            <!-- TAB 3: VENTANA Y APERTURA DE AGENDA -->
+                            <div class="tab-pane fade" id="tab-reglas-agenda" role="tabpanel">
+                                <div class="p-2" style="max-width: 750px;">
+                                    <div class="card border-0 bg-light rounded-4 p-4 mb-4">
+                                        <h6 class="fw-bold text-dark mb-2">
+                                            <i class="bi bi-calendar-range text-primary me-2"></i>1. Período de Tiempo / Ventana de Turnos Habilitada
+                                        </h6>
+                                        <p class="text-muted small mb-3">
+                                            Controla dinámicamente hasta cuántos días hacia adelante los pacientes pueden reservar con este profesional. Esto <strong>evita que saquen turnos a años futuros</strong> (por ejemplo de acá al 2030).
+                                        </p>
+                                        <div class="row g-3 align-items-center mb-3">
+                                            <div class="col-sm-6">
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control form-control-lg bg-white border-0 shadow-sm" id="agenda-inline-dias-antelacion" min="1" max="730" placeholder="Ej: 30, 45, 60, 90...">
+                                                    <span class="input-group-text bg-white border-0 text-muted">días futuros</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-6">
+                                                <small class="text-muted d-block" id="agenda-inline-dias-hint">
+                                                    Si se deja vacío, aplica el límite general del sistema configurado.
+                                                </small>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setDiasRapidosAgendaInline(15)">15 días</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setDiasRapidosAgendaInline(30)">30 días (1 mes)</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setDiasRapidosAgendaInline(45)">45 días</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setDiasRapidosAgendaInline(60)">60 días (2 meses)</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setDiasRapidosAgendaInline(90)">90 días (3 meses)</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setDiasRapidosAgendaInline(180)">180 días (6 meses)</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setDiasRapidosAgendaInline(365)">365 días (1 año)</button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger rounded-pill" onclick="setDiasRapidosAgendaInline('')">Usar General del Sistema</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="card border-0 bg-light rounded-4 p-4 mb-4">
+                                        <h6 class="fw-bold text-dark mb-2">
+                                            <i class="bi bi-calendar2-check text-primary me-2"></i>2. Día Mensual de Apertura de Agenda
+                                        </h6>
+                                        <p class="text-muted small mb-3">
+                                            Si el médico habilita su agenda a partir de un día específico de cada mes (por ejemplo: <em>"La agenda abre los días 10 de cada mes"</em> o <em>"los días 1"</em>), indícalo aquí. Antes de ese día, los pacientes verán un aviso informando qué día abre la reserva.
+                                        </p>
+                                        <div class="row g-3 align-items-center mb-2">
+                                            <div class="col-sm-6">
+                                                <div class="input-group">
+                                                    <span class="input-group-text bg-white border-0 text-muted">Día</span>
+                                                    <input type="number" class="form-control form-control-lg bg-white border-0 shadow-sm" id="agenda-inline-dia-apertura" min="1" max="31" placeholder="Ej: 1, 10, 15, 20...">
+                                                    <span class="input-group-text bg-white border-0 text-muted">de cada mes</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-6">
+                                                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill" onclick="document.getElementById('agenda-inline-dia-apertura').value=''">Sin día fijo (Siempre abierta)</button>
+                                            </div>
+                                        </div>
+                                        <small class="text-muted">Déjalo en blanco si la agenda se encuentra abierta continuamente sin esperar a un día específico del mes.</small>
+                                    </div>
+
+                                    <div class="text-end pt-2">
+                                        <button type="button" class="btn btn-primary rounded-pill px-4 py-2 fw-bold" onclick="guardarReglasAgendaInline()">
+                                            <i class="bi bi-check-lg me-1"></i> Guardar Reglas de Agenda
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -373,17 +444,33 @@
                     <h1 class="h2 fw-bold">Configuración del Sistema</h1>
                 </div>
 
-                <!-- Agenda -->
+                <!-- Agenda Global -->
                 <div class="card border-0 shadow-sm rounded-4 mb-4">
                     <div class="card-body p-4">
-                        <h5 class="fw-bold mb-3"><i class="bi bi-calendar3 me-2 text-primary"></i>Agenda</h5>
+                        <h5 class="fw-bold mb-3"><i class="bi bi-calendar3 me-2 text-primary"></i>Límite Global de Agenda (Para todos los Médicos)</h5>
+                        <p class="text-muted small">
+                            Define el período máximo general hacia adelante en el que cualquier paciente puede reservar turnos si el profesional no tiene una ventana personalizada.
+                        </p>
                         <form id="form-configuracion">
-                            <div class="mb-3">
-                                <label for="config-meses" class="form-label fw-bold">Meses visibles en agenda</label>
-                                <input type="number" class="form-control" id="config-meses" min="1" max="12" required style="max-width: 150px;">
-                                <div class="form-text">Define la cantidad de meses hacia adelante que los pacientes pueden visualizar para sacar turnos.</div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-4">
+                                    <label for="config-meses" class="form-label fw-bold">Meses de antelación general</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="config-meses" min="1" max="24" required>
+                                        <span class="input-group-text">meses</span>
+                                    </div>
+                                    <div class="form-text">Ej: 1, 2, 3 meses (equivale a 30, 60, 90 días).</div>
+                                </div>
+                                <div class="col-md-8 d-flex align-items-end">
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" onclick="document.getElementById('config-meses').value=1">1 Mes</button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" onclick="document.getElementById('config-meses').value=2">2 Meses</button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" onclick="document.getElementById('config-meses').value=3">3 Meses</button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" onclick="document.getElementById('config-meses').value=6">6 Meses</button>
+                                    </div>
+                                </div>
                             </div>
-                            <button type="submit" class="btn btn-primary px-4 rounded-pill">Guardar Configuración</button>
+                            <button type="submit" class="btn btn-primary px-4 rounded-pill">Guardar Configuración General</button>
                         </form>
                     </div>
                 </div>
@@ -926,6 +1013,17 @@
                     <button type="button" class="btn btn-xs btn-outline-danger py-0 px-2 rounded-pill small" onclick="setDiasRapidosMedico('')">General del sistema</button>
                 </div>
                 <div class="form-text">Define hasta cuántos días en el futuro los pacientes pueden reservar turnos con este médico (evita turnos a años futuros). Déjalo vacío para usar el valor general.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold">
+                    <i class="bi bi-calendar2-check me-1 text-primary"></i>Día Mensual de Apertura de Agenda
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text bg-light border-0 text-muted">Día</span>
+                    <input type="number" class="form-control bg-light border-0" id="edit-medico-dia-apertura" min="1" max="31" placeholder="Ej: 1, 10, 15, 20...">
+                    <span class="input-group-text bg-light border-0 text-muted">de cada mes</span>
+                </div>
+                <div class="form-text">Si este médico abre su agenda a partir de un día específico cada mes (ej. día 10), ingrésalo aquí. Déjalo vacío si está siempre abierta.</div>
             </div>
             <div class="mb-3">
                 <label class="form-label fw-semibold">Biografía / Presentación</label>

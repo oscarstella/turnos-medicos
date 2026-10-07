@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     matricula VARCHAR(100) NULL,
     contrasena VARCHAR(255) NULL,
     dias_antelacion_agenda INT NULL DEFAULT NULL,
+    dia_apertura_agenda INT NULL DEFAULT NULL,
     creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_usuario_obra_social FOREIGN KEY (obra_social_id) REFERENCES obras_sociales(id) ON DELETE SET NULL,
     CONSTRAINT fk_usuario_plan FOREIGN KEY (plan_id) REFERENCES planes_obras_sociales(id) ON DELETE SET NULL,

@@ -13,7 +13,7 @@ $search_obra_social = isset($_GET['obra_social_id']) ? intval($_GET['obra_social
 try {
     // 1. Obtener la lista base de médicos (filtrada)
     $q_medicos = "
-        SELECT u.id, u.nombre, u.apellido, u.foto_perfil, u.direccion, u.dias_antelacion_agenda 
+        SELECT u.id, u.nombre, u.apellido, u.foto_perfil, u.direccion, u.dias_antelacion_agenda, u.dia_apertura_agenda 
         FROM usuarios u
         WHERE u.rol = 'medico'
     ";

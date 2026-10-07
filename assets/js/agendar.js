@@ -555,7 +555,20 @@ window.wizardRenderCalendarioMock = function() {
             const fechaIso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
             const disponibilidadResp = await fetch(`backend/api/get_disponibilidad.php?medico_id=${encodeURIComponent(wizardData.medicoId)}&desde=${encodeURIComponent(fechaIso(new Date()))}&hasta=${encodeURIComponent(fechaIso(hasta))}`);
             if (!disponibilidadResp.ok) throw new Error('No se pudo consultar la disponibilidad.');
-            wizardData.disponibilidad = await disponibilidadResp.json();
+            const dispData = await disponibilidadResp.json();
+            if (dispData && dispData.agenda_cerrada) {
+                container.innerHTML = `
+                    <div class="col-12 text-center py-4">
+                        <div class="alert alert-info border shadow-sm rounded-4 p-4 d-inline-block text-center" style="max-width: 520px;">
+                            <i class="bi bi-calendar2-lock text-primary fs-1 d-block mb-2"></i>
+                            <h5 class="fw-bold mb-2">Agenda del mes aún no habilitada</h5>
+                            <p class="text-secondary mb-0">La agenda de turnos para este profesional se abre a partir del <strong>día ${dispData.dia_apertura} de cada mes</strong>. Por favor, vuelve a ingresar en esa fecha para elegir tu turno.</p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            wizardData.disponibilidad = Array.isArray(dispData) ? dispData : (dispData.slots || []);
             container.innerHTML = '';
             
             const hoy = new Date();

@@ -1703,6 +1703,7 @@ function abrirEditMedico(id) {
     document.getElementById('edit-medico-direccion').value = med.direccion || '';
     document.getElementById('edit-medico-biografia').value = med.biografia || '';
     document.getElementById('edit-medico-dias-agenda').value = (med.dias_antelacion_agenda !== null && typeof med.dias_antelacion_agenda !== 'undefined') ? med.dias_antelacion_agenda : '';
+    document.getElementById('edit-medico-dia-apertura').value = (med.dia_apertura_agenda !== null && typeof med.dia_apertura_agenda !== 'undefined') ? med.dia_apertura_agenda : '';
     document.getElementById('edit-medico-foto').value = '';
 
     // Llenar select de sedes
@@ -1867,6 +1868,7 @@ document.getElementById('form-edit-medico').addEventListener('submit', function(
     const especialidadesSeleccionadas = Array.from(espChecks).map(cb => parseInt(cb.value));
 
     const diasAgendaVal = document.getElementById('edit-medico-dias-agenda').value.trim();
+    const diaAperturaVal = document.getElementById('edit-medico-dia-apertura').value.trim();
 
     const payload = {
         id: document.getElementById('edit-medico-id').value,
@@ -1876,6 +1878,7 @@ document.getElementById('form-edit-medico').addEventListener('submit', function(
         direccion: document.getElementById('edit-medico-direccion').value,
         biografia: document.getElementById('edit-medico-biografia').value,
         dias_antelacion_agenda: diasAgendaVal !== '' ? parseInt(diasAgendaVal) : null,
+        dia_apertura_agenda: diaAperturaVal !== '' ? parseInt(diaAperturaVal) : null,
         foto_perfil: fotoUrl,
         especialidades: especialidadesSeleccionadas
     };
@@ -2459,7 +2462,8 @@ function cargarHorariosEnEditorInline(med) {
     const subLabel = document.getElementById('agenda-admin-medico-subtitulo');
     if (subLabel) {
         const diasVentana = med.dias_antelacion_agenda ? `${med.dias_antelacion_agenda} días hacia adelante` : 'Límite general del sistema';
-        subLabel.textContent = `Especialidad: ${med.especialidad_nombre || 'General'} | Ventana de turnos: ${diasVentana}`;
+        const aperturaTxt = med.dia_apertura_agenda ? ` | Abre día ${med.dia_apertura_agenda} de c/mes` : '';
+        subLabel.textContent = `Especialidad: ${med.especialidad_nombre || 'General'} | Ventana de turnos: ${diasVentana}${aperturaTxt}`;
     }
     
     // 1. Cargar configuración de horarios
@@ -2472,7 +2476,17 @@ function cargarHorariosEnEditorInline(med) {
         renderBloqueHorario(container, null);
     }
 
-    // 2. Cargar turnos asignados del profesional
+    // 2. Cargar reglas de ventana y día de apertura de agenda (Tab 3)
+    const inpDiasAntelacion = document.getElementById('agenda-inline-dias-antelacion');
+    if (inpDiasAntelacion) {
+        inpDiasAntelacion.value = (med.dias_antelacion_agenda !== null && typeof med.dias_antelacion_agenda !== 'undefined') ? med.dias_antelacion_agenda : '';
+    }
+    const inpDiaApertura = document.getElementById('agenda-inline-dia-apertura');
+    if (inpDiaApertura) {
+        inpDiaApertura.value = (med.dia_apertura_agenda !== null && typeof med.dia_apertura_agenda !== 'undefined') ? med.dia_apertura_agenda : '';
+    }
+
+    // 3. Cargar turnos asignados del profesional
     cargarTurnosDelProfesional(med.id);
 }
 
@@ -2668,3 +2682,48 @@ function guardarHorariosMedicoInline() {
         if(btn) btn.disabled = false;
     });
 }
+
+window.setDiasRapidosAgendaInline = function(dias) {
+    document.getElementById('agenda-inline-dias-antelacion').value = dias;
+};
+
+window.guardarReglasAgendaInline = function() {
+    const medicoId = document.getElementById('agenda-admin-medico-id').value;
+    if (!medicoId) return;
+
+    const diasVal = document.getElementById('agenda-inline-dias-antelacion').value.trim();
+    const diaAperturaVal = document.getElementById('agenda-inline-dia-apertura').value.trim();
+
+    const payload = {
+        id: medicoId,
+        dias_antelacion_agenda: diasVal !== '' ? parseInt(diasVal) : null,
+        dia_apertura_agenda: diaAperturaVal !== '' ? parseInt(diaAperturaVal) : null
+    };
+
+    fetch('backend/api/admin_update_medico.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        alert(data.message || 'Reglas de agenda guardadas correctamente.');
+        
+        // Actualizar médico en memoria local
+        if (window._medicosParaAgenda) {
+            const m = window._medicosParaAgenda.find(x => x.id == medicoId);
+            if (m) {
+                m.dias_antelacion_agenda = payload.dias_antelacion_agenda;
+                m.dia_apertura_agenda = payload.dia_apertura_agenda;
+                // Actualizar subtítulo
+                const subLabel = document.getElementById('agenda-admin-medico-subtitulo');
+                if (subLabel) {
+                    const diasVentana = m.dias_antelacion_agenda ? `${m.dias_antelacion_agenda} días hacia adelante` : 'Límite general del sistema';
+                    const aperturaTxt = m.dia_apertura_agenda ? ` | Abre día ${m.dia_apertura_agenda} de c/mes` : '';
+                    subLabel.textContent = `Especialidad: ${m.especialidad_nombre || 'General'} | Ventana de turnos: ${diasVentana}${aperturaTxt}`;
+                }
+            }
+        }
+    })
+    .catch(() => alert('Error de conexión al guardar reglas de agenda.'));
+};

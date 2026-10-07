@@ -28,20 +28,30 @@ try {
     if (!$doctorId || !$date || $date->format('Y-m-d') !== $dateText || $date < new DateTime('today', $tz)) {
         http_response_code(400); throw new RuntimeException('Seleccioná un profesional y una fecha futura válida.');
     }
-    // Verificar límite de agenda del médico o global del sistema
-    $docLimitQuery = $db->prepare("SELECT id, dias_antelacion_agenda FROM usuarios WHERE id = :id AND rol = 'medico' LIMIT 1");
+    // Verificar límite de agenda del médico o global del sistema y día de apertura
+    $docLimitQuery = $db->prepare("SELECT id, dias_antelacion_agenda, dia_apertura_agenda FROM usuarios WHERE id = :id AND rol = 'medico' LIMIT 1");
     $docLimitQuery->execute([':id' => $doctorId]);
     $doctorRow = $docLimitQuery->fetch(PDO::FETCH_ASSOC);
     if (!$doctorRow) { http_response_code(400); throw new RuntimeException('El profesional seleccionado no está disponible.'); }
 
+    $hoy = new DateTime('today', $tz);
+    if (!empty($doctorRow['dia_apertura_agenda']) && (int)$doctorRow['dia_apertura_agenda'] > 0) {
+        $diaApertura = (int)$doctorRow['dia_apertura_agenda'];
+        $diaActual = (int)$hoy->format('j');
+        if ($diaActual < $diaApertura) {
+            http_response_code(400);
+            throw new RuntimeException("La agenda de este profesional abre el día {$diaApertura} de cada mes.");
+        }
+    }
+
     if (!empty($doctorRow['dias_antelacion_agenda']) && (int)$doctorRow['dias_antelacion_agenda'] > 0) {
         $daysAhead = (int)$doctorRow['dias_antelacion_agenda'];
-        $lastBookableDate = (new DateTime('today', $tz))->modify('+' . $daysAhead . ' days');
+        $lastBookableDate = (clone $hoy)->modify('+' . $daysAhead . ' days');
     } else {
         $agendaConfig = $db->prepare("SELECT valor FROM configuracion WHERE clave = 'meses_agenda' LIMIT 1");
         $agendaConfig->execute();
-        $monthsAhead = max(1, min(12, (int)($agendaConfig->fetchColumn() ?: 3)));
-        $lastBookableDate = (new DateTime('today', $tz))->modify('+' . $monthsAhead . ' months');
+        $monthsAhead = max(1, min(24, (int)($agendaConfig->fetchColumn() ?: 3)));
+        $lastBookableDate = (clone $hoy)->modify('+' . $monthsAhead . ' months');
     }
 
     if ($date > $lastBookableDate) { http_response_code(400); throw new RuntimeException('La fecha está fuera del período habilitado para reservar.'); }
