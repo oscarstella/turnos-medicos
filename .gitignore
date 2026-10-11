@@ -1,2 +1,7 @@
-# Credenciales de Base de Datos
-backend/config/database.php
+node_modules/
+client/node_modules/
+server/node_modules/
+client/dist/
+.env
+.DS_Store
+*.log
