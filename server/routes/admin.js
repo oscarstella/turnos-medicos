@@ -297,6 +297,74 @@ router.put('/medicos/:id', async (req, res) => {
   }
 });
 
+// 4b. Coberturas (Obras Sociales y Planes) de un médico
+router.get('/medicos/:id/coberturas', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [osRows] = await pool.query('SELECT obra_social_id FROM medicos_obras_sociales WHERE usuario_id = ?', [id]);
+    const [planRows] = await pool.query('SELECT plan_id FROM medicos_planes WHERE usuario_id = ?', [id]);
+    res.json({
+      status: 'success',
+      data: {
+        obras_sociales: osRows.map(r => r.obra_social_id),
+        planes: planRows.map(r => r.plan_id)
+      }
+    });
+  } catch (error) {
+    console.error('Error en GET /medicos/:id/coberturas:', error);
+    res.status(500).json({ status: 'error', message: 'Error al obtener coberturas.' });
+  }
+});
+
+router.put('/medicos/:id/coberturas', requireRole(['superadmin', 'admin']), async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const { id } = req.params;
+    const { obras_sociales, planes } = req.body;
+    await connection.beginTransaction();
+
+    await connection.query('DELETE FROM medicos_planes WHERE usuario_id = ?', [id]);
+    await connection.query('DELETE FROM medicos_obras_sociales WHERE usuario_id = ?', [id]);
+
+    const osMap = new Set();
+    if (Array.isArray(obras_sociales)) {
+      obras_sociales.forEach(osid => {
+        const val = parseInt(osid, 10);
+        if (val > 0) osMap.add(val);
+      });
+    }
+
+    if (Array.isArray(planes) && planes.length > 0) {
+      const planValues = [];
+      for (const pid of planes) {
+        const val = parseInt(pid, 10);
+        if (val > 0) {
+          planValues.push([id, val]);
+          const [osRow] = await connection.query('SELECT obra_social_id FROM planes_obras_sociales WHERE id = ?', [val]);
+          if (osRow.length > 0) osMap.add(osRow[0].obra_social_id);
+        }
+      }
+      if (planValues.length > 0) {
+        await connection.query('INSERT INTO medicos_planes (usuario_id, plan_id) VALUES ?', [planValues]);
+      }
+    }
+
+    if (osMap.size > 0) {
+      const osValues = Array.from(osMap).map(osid => [id, osid]);
+      await connection.query('INSERT INTO medicos_obras_sociales (usuario_id, obra_social_id) VALUES ?', [osValues]);
+    }
+
+    await connection.commit();
+    res.json({ status: 'success', message: 'Coberturas actualizadas exitosamente.' });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error al actualizar coberturas:', error);
+    res.status(500).json({ status: 'error', message: 'Error al actualizar coberturas.' });
+  } finally {
+    connection.release();
+  }
+});
+
 // 5. Horarios de un médico (obtener y actualizar por bloques semanales)
 router.get('/horarios/:medicoId', async (req, res) => {
   try {

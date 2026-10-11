@@ -75,7 +75,7 @@ router.get('/obras-sociales', async (req, res) => {
   }
 });
 
-// 3. Obtener planes de una obra social
+// 3. Obtener planes de una obra social (resuelve planes de la obra social y su familia canónica completa)
 router.get('/planes', async (req, res) => {
   try {
     const { obra_social_id } = req.query;
@@ -83,14 +83,56 @@ router.get('/planes', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Falta parámetro obra_social_id.' });
     }
 
-    const [rows] = await pool.query(
-      'SELECT id, nombre FROM planes_obras_sociales WHERE obra_social_id = ? ORDER BY nombre ASC',
-      [obra_social_id]
-    );
-    if (!rows || rows.length === 0) {
+    const targetId = parseInt(obra_social_id, 10);
+    const [osRows] = await pool.query('SELECT id, nombre FROM obras_sociales WHERE id = ?', [targetId]);
+    if (!osRows || osRows.length === 0) {
       return res.json({ status: 'success', data: [{ id: 0, nombre: 'Plan General' }] });
     }
-    res.json({ status: 'success', data: rows });
+
+    const osNombre = osRows[0].nombre.toLowerCase();
+    const familyKeywords = [
+      'accord', 'osde', 'swiss medical', 'galeno', 'sancor', 'medife', 'medifé',
+      'omint', 'medicus', 'activa salud', 'aca salud', 'bristol', 'federada',
+      'ioma', 'pami', 'luis pasteur', 'jerarqu', 'prevencion', 'prevención',
+      'union personal', 'unión personal', 'osecac'
+    ];
+
+    let queryIds = [targetId];
+    for (const kw of familyKeywords) {
+      if (osNombre.includes(kw)) {
+        const [relatedOS] = await pool.query(
+          'SELECT id FROM obras_sociales WHERE LOWER(nombre) LIKE ? ORDER BY LENGTH(nombre) ASC LIMIT 6',
+          [`%${kw}%`]
+        );
+        relatedOS.forEach(r => {
+          if (!queryIds.includes(r.id)) queryIds.push(r.id);
+        });
+        break;
+      }
+    }
+
+    const [rows] = await pool.query(
+      `SELECT id, nombre FROM planes_obras_sociales 
+       WHERE obra_social_id IN (?) 
+       ORDER BY FIELD(obra_social_id, ?) DESC, nombre ASC`,
+      [queryIds, targetId]
+    );
+
+    // Desduplicar planes preservando el ID más específico
+    const seenNames = new Set();
+    const uniquePlanes = [];
+    for (const r of rows) {
+      const clean = r.nombre.trim().toLowerCase();
+      if (!seenNames.has(clean)) {
+        seenNames.add(clean);
+        uniquePlanes.push(r);
+      }
+    }
+
+    if (uniquePlanes.length === 0) {
+      return res.json({ status: 'success', data: [{ id: 0, nombre: 'Plan General' }] });
+    }
+    res.json({ status: 'success', data: uniquePlanes });
   } catch (error) {
     console.error('Error en /planes:', error);
     res.status(500).json({ status: 'error', message: 'Error al obtener planes.' });
@@ -142,17 +184,17 @@ router.get('/medicos', async (req, res) => {
     }
 
     if (unidad_id) {
-      query += ' AND (hm.unidad_id = ? OR u.direccion LIKE ?)';
-      params.push(unidad_id, `%${unidad_id}%`);
+      query += ' AND u.id IN (SELECT DISTINCT hm_u.medico_id FROM horarios_medicos hm_u WHERE hm_u.unidad_id = ?)';
+      params.push(unidad_id);
     }
 
     if (especialidad_id) {
-      query += ' AND me.especialidad_id = ?';
+      query += ' AND u.id IN (SELECT DISTINCT me_e.usuario_id FROM medicos_especialidades me_e WHERE me_e.especialidad_id = ?)';
       params.push(especialidad_id);
     }
 
     if (obra_social_id) {
-      query += ' AND mos.obra_social_id = ?';
+      query += ' AND u.id IN (SELECT DISTINCT mos_o.usuario_id FROM medicos_obras_sociales mos_o WHERE mos_o.obra_social_id = ?)';
       params.push(obra_social_id);
     }
 
@@ -173,15 +215,21 @@ router.get('/medicos', async (req, res) => {
     const doctorIds = rows.map(r => r.id);
 
     // Obtener horarios semanales vigentes (estrictamente Lunes a Viernes, sin sábados)
-    const [horariosRows] = await pool.query(`
+    let horariosQuery = `
       SELECT hm.medico_id, hm.dia_semana, hm.hora_inicio, hm.hora_fin, hm.duracion_turno_minutos,
              ua.id as unidad_id, ua.nombre as unidad_nombre, ua.calle as unidad_calle, ua.numero as unidad_numero,
              ua.localidad as unidad_localidad, ua.latitud as unidad_latitud, ua.longitud as unidad_longitud
       FROM horarios_medicos hm
       LEFT JOIN unidades_atencion ua ON hm.unidad_id = ua.id
       WHERE hm.medico_id IN (?) AND hm.dia_semana IN ('Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes')
-      ORDER BY FIELD(hm.dia_semana, 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'), hm.hora_inicio ASC
-    `, [doctorIds]);
+    `;
+    const horariosParams = [doctorIds];
+    if (unidad_id) {
+      horariosQuery += ' AND hm.unidad_id = ?';
+      horariosParams.push(unidad_id);
+    }
+    horariosQuery += ` ORDER BY FIELD(hm.dia_semana, 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'), hm.hora_inicio ASC`;
+    const [horariosRows] = await pool.query(horariosQuery, horariosParams);
 
     // Obtener coberturas médicas aceptadas
     const [obrasRows] = await pool.query(`
@@ -213,17 +261,23 @@ router.get('/medicos', async (req, res) => {
           return { id: parseInt(id, 10), nombre };
         });
 
-      let sedes = (med.sedes_raw || '')
-        .split('||')
-        .filter(Boolean)
-        .map((item) => {
-          const parts = item.split(':');
-          return { id: parseInt(parts[0], 10), nombre: parts[1], direccion: parts[2] || '' };
-        });
-
-      // Si no tiene sedes en horarios pero tiene dirección registrada, mostrarla
+      // Unidades / Sedes únicas a partir de los horarios reales del médico
+      const sedesMap = new Map();
+      (horariosByMedico[med.id] || []).forEach(h => {
+        if (h.unidad_id && !sedesMap.has(h.unidad_id)) {
+          sedesMap.set(h.unidad_id, {
+            id: h.unidad_id,
+            nombre: h.unidad_nombre,
+            direccion: [h.unidad_calle, h.unidad_numero].filter(Boolean).join(' ') || h.unidad_nombre,
+            localidad: h.unidad_localidad || 'San Carlos de Bariloche',
+            latitud: h.unidad_latitud,
+            longitud: h.unidad_longitud
+          });
+        }
+      });
+      let sedes = Array.from(sedesMap.values());
       if (sedes.length === 0 && med.direccion) {
-        sedes = [{ id: 0, nombre: med.direccion, direccion: med.direccion }];
+        sedes = [{ id: 0, nombre: med.direccion, direccion: med.direccion, localidad: 'San Carlos de Bariloche', latitud: null, longitud: null }];
       }
 
       return {

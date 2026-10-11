@@ -97,6 +97,15 @@ export default function DashboardPage() {
   const [usuarioSearch, setUsuarioSearch] = useState('');
   const [rolFiltro, setRolFiltro] = useState('');
 
+  // Coberturas Modal para Médicos
+  const [coberturasMedico, setCoberturasMedico] = useState(null);
+  const [coberturasAllObras, setCoberturasAllObras] = useState([]);
+  const [selectedOSIds, setSelectedOSIds] = useState(new Set());
+  const [selectedPlanIds, setSelectedPlanIds] = useState(new Set());
+  const [loadingDoctorCoberturas, setLoadingDoctorCoberturas] = useState(false);
+  const [savingDoctorCoberturas, setSavingDoctorCoberturas] = useState(false);
+  const [coberturasSearch, setCoberturasSearch] = useState('');
+
   // Feedback Toast
   const [toastMsg, setToastMsg] = useState('');
 
@@ -261,10 +270,50 @@ export default function DashboardPage() {
     }
   };
 
+  const handleOpenDoctorCoberturas = async (medico) => {
+    setCoberturasMedico(medico);
+    setLoadingDoctorCoberturas(true);
+    setCoberturasSearch('');
+    try {
+      if (coberturasAllObras.length === 0) {
+        const obRes = await api.get('/public/obras-sociales');
+        setCoberturasAllObras(obRes.data || []);
+      }
+      const res = await api.get(`/admin/medicos/${medico.id}/coberturas`);
+      const activeOS = new Set((res.data?.obras_sociales || []).map(Number));
+      const activePlanes = new Set((res.data?.planes || []).map(Number));
+      setSelectedOSIds(activeOS);
+      setSelectedPlanIds(activePlanes);
+    } catch (err) {
+      console.error(err);
+      showToast('Error al cargar coberturas del profesional.');
+    } finally {
+      setLoadingDoctorCoberturas(false);
+    }
+  };
+
+  const handleSaveDoctorCoberturas = async () => {
+    if (!coberturasMedico) return;
+    setSavingDoctorCoberturas(true);
+    try {
+      await api.put(`/admin/medicos/${coberturasMedico.id}/coberturas`, {
+        obras_sociales: Array.from(selectedOSIds),
+        planes: Array.from(selectedPlanIds)
+      });
+      showToast('Coberturas médicas actualizadas correctamente.');
+      setCoberturasMedico(null);
+      fetchMedicos();
+    } catch (err) {
+      showToast(err.message || 'Error al guardar coberturas.');
+    } finally {
+      setSavingDoctorCoberturas(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'usuarios') fetchUsuarios();
     if (activeTab === 'reglas') fetchConfig();
-  }, [activeTab, usuarioSearch]);
+  }, [activeTab, usuarioSearch, rolFiltro]);
 
   const handleUpdateEstadoTurno = async (turnoId, nuevoEstado) => {
     try {
@@ -720,6 +769,13 @@ export default function DashboardPage() {
                       }}
                     >
                       <Clock size={14} /> Horarios
+                    </button>
+                    <button 
+                      className="btn btn-secondary btn-sm"
+                      style={{ flex: 1 }}
+                      onClick={() => handleOpenDoctorCoberturas(m)}
+                    >
+                      <ShieldCheck size={14} /> Coberturas
                     </button>
                     <button 
                       className="btn btn-secondary btn-sm"
@@ -1275,104 +1331,177 @@ export default function DashboardPage() {
       {/* TAB 7: USUARIOS Y ROLES */}
       {activeTab === 'usuarios' && (
         <div className="card" style={{ padding: '24px' }}>
-          <div className="flex items-center justify-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
+          {/* Header y Barra de Búsqueda Responsive */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4" style={{ marginBottom: '24px' }}>
             <div>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Administración de Usuarios y Permisos</h3>
               <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: '4px', marginBottom: 0 }}>
-                Roles del sistema: Paciente, Recepcionista / Telefonista, Administrador y Médico
+                Control y asignación de roles: Paciente, Recepcionista / Telefonista, Administrador y Médico
               </p>
             </div>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Buscar por nombre, email o DNI..."
-              style={{ maxWidth: '300px' }}
-              value={usuarioSearch}
-              onChange={e => setUsuarioSearch(e.target.value)}
-            />
+
+            {/* Barra de Búsqueda Moderna y Responsive */}
+            <div className="flex items-center gap-2 w-full md:w-auto" style={{ maxWidth: '420px', minWidth: '280px' }}>
+              <div style={{ position: 'relative', width: '100%' }}>
+                <Search 
+                  size={18} 
+                  style={{ 
+                    position: 'absolute', 
+                    left: '12px', 
+                    top: '50%', 
+                    transform: 'translateY(-50%)', 
+                    color: 'var(--color-text-muted)',
+                    pointerEvents: 'none' 
+                  }} 
+                />
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Buscar por nombre, email o DNI..."
+                  style={{ 
+                    paddingLeft: '38px', 
+                    paddingRight: usuarioSearch ? '36px' : '14px',
+                    width: '100%'
+                  }}
+                  value={usuarioSearch}
+                  onChange={e => setUsuarioSearch(e.target.value)}
+                />
+                {usuarioSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setUsuarioSearch('')}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--color-text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '4px'
+                    }}
+                    title="Limpiar búsqueda"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Filtro rápido por rol */}
-          <div className="flex flex-wrap gap-2" style={{ marginBottom: '20px' }}>
-            {[
-              { id: '', label: 'Todos los Usuarios' },
-              { id: 'paciente', label: 'Pacientes' },
-              { id: 'recepcionista', label: 'Recepcionistas / Telefonistas' },
-              { id: 'admin', label: 'Administradores' },
-              { id: 'medico', label: 'Médicos' }
-            ].map(r => (
-              <button
-                key={r.id}
-                type="button"
-                className={`btn btn-xs ${rolFiltro === r.id ? 'btn-primary' : 'btn-outline'}`}
-                onClick={() => setRolFiltro(r.id)}
-              >
-                {r.label}
-              </button>
-            ))}
+          {/* Filtro rápido por rol + Contador de usuarios encontrados */}
+          <div className="flex flex-wrap items-center justify-between gap-3" style={{ marginBottom: '20px' }}>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: '', label: 'Todos los Usuarios' },
+                { id: 'paciente', label: 'Pacientes' },
+                { id: 'recepcionista', label: 'Recepcionistas / Telefonistas' },
+                { id: 'admin', label: 'Administradores' },
+                { id: 'medico', label: 'Médicos' }
+              ].map(r => (
+                <button
+                  key={r.id}
+                  type="button"
+                  className={`btn btn-xs ${rolFiltro === r.id ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setRolFiltro(r.id)}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
+              Mostrando <strong style={{ color: 'var(--color-text-main)' }}>{usuarios.length}</strong> usuarios
+            </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-              <thead style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
-                <tr>
-                  <th style={{ padding: '12px 14px' }}>ID</th>
-                  <th style={{ padding: '12px 14px' }}>Nombre Completo</th>
-                  <th style={{ padding: '12px 14px' }}>DNI</th>
-                  <th style={{ padding: '12px 14px' }}>Email</th>
-                  <th style={{ padding: '12px 14px' }}>Rol Actual</th>
-                  <th style={{ padding: '12px 14px' }}>Asignar Rol</th>
-                </tr>
-              </thead>
-              <tbody>
-                {usuarios.map(u => {
-                  const rolBadgeClass = 
-                    ['admin', 'superadmin'].includes(u.rol) ? 'badge-primary' :
-                    u.rol === 'recepcionista' ? 'badge-warning' :
-                    u.rol === 'medico' ? 'badge-success' : 'badge-secondary';
-                  
-                  const rolLabel =
-                    ['admin', 'superadmin'].includes(u.rol) ? 'Administrador' :
-                    u.rol === 'recepcionista' ? 'Recepcionista / Telefonista' :
-                    u.rol === 'medico' ? 'Médico' : 'Paciente';
+          {usuarios.length === 0 ? (
+            <div style={{ padding: '48px 20px', textAlign: 'center', background: 'var(--color-bg)', borderRadius: '12px' }}>
+              <Search size={36} style={{ color: 'var(--color-text-muted)', margin: '0 auto 12px', opacity: 0.5 }} />
+              <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--color-text-main)', marginBottom: '4px' }}>
+                No se encontraron usuarios
+              </div>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: 0 }}>
+                {usuarioSearch || rolFiltro 
+                  ? 'No hay registros que coincidan con la búsqueda o filtro seleccionado.' 
+                  : 'No hay usuarios registrados en el sistema.'}
+              </p>
+              {(usuarioSearch || rolFiltro) && (
+                <button 
+                  className="btn btn-secondary btn-sm" 
+                  style={{ marginTop: '16px' }}
+                  onClick={() => { setUsuarioSearch(''); setRolFiltro(''); }}
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid var(--color-border)' }}>
+              <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+                <thead style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
+                  <tr>
+                    <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>ID</th>
+                    <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Nombre Completo</th>
+                    <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>DNI</th>
+                    <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Email</th>
+                    <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Rol Actual</th>
+                    <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Asignar Rol</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usuarios.map(u => {
+                    const rolBadgeClass = 
+                      ['admin', 'superadmin'].includes(u.rol) ? 'badge-primary' :
+                      u.rol === 'recepcionista' ? 'badge-warning' :
+                      u.rol === 'medico' ? 'badge-success' : 'badge-secondary';
+                    
+                    const rolLabel =
+                      ['admin', 'superadmin'].includes(u.rol) ? 'Administrador' :
+                      u.rol === 'recepcionista' ? 'Recepcionista / Telefonista' :
+                      u.rol === 'medico' ? 'Médico' : 'Paciente';
 
-                  return (
-                    <tr key={u.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                      <td style={{ padding: '12px 14px', color: 'var(--color-text-muted)' }}>#{u.id}</td>
-                      <td style={{ padding: '12px 14px', fontWeight: 600 }}>{u.nombre} {u.apellido}</td>
-                      <td style={{ padding: '12px 14px' }}>{u.dni || '-'}</td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <div>{u.email}</div>
-                        {u.email === 'oscarns@gmail.com' && (
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--color-primary)', fontWeight: 700 }}>
-                            ★ Administrador Principal
+                    return (
+                      <tr key={u.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <td style={{ padding: '12px 14px', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>#{u.id}</td>
+                        <td style={{ padding: '12px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{u.nombre} {u.apellido}</td>
+                        <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>{u.dni || '-'}</td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div>{u.email}</div>
+                          {u.email === 'oscarns@gmail.com' && (
+                            <span style={{ fontSize: '0.6875rem', color: 'var(--color-primary)', fontWeight: 700 }}>
+                              ★ Administrador Principal
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                          <span className={`badge ${rolBadgeClass}`}>
+                            {rolLabel}
                           </span>
-                        )}
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <span className={`badge ${rolBadgeClass}`}>
-                          {rolLabel}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <select
-                          className="form-select"
-                          style={{ padding: '4px 8px', fontSize: '0.8125rem' }}
-                          value={u.rol}
-                          onChange={e => handleChangeUserRol(u.id, e.target.value)}
-                        >
-                          <option value="paciente">Paciente</option>
-                          <option value="recepcionista">Recepcionista / Telefonista</option>
-                          <option value="admin">Administrador</option>
-                          <option value="medico">Médico</option>
-                        </select>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                        <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                          <select
+                            className="form-select"
+                            style={{ padding: '4px 8px', fontSize: '0.8125rem' }}
+                            value={u.rol}
+                            onChange={e => handleChangeUserRol(u.id, e.target.value)}
+                          >
+                            <option value="paciente">Paciente</option>
+                            <option value="recepcionista">Recepcionista / Telefonista</option>
+                            <option value="admin">Administrador</option>
+                            <option value="medico">Médico</option>
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -1610,6 +1739,126 @@ export default function DashboardPage() {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL COBERTURAS MÉDICAS DEL PROFESIONAL */}
+      {coberturasMedico && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '640px', width: '90%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--color-border)' }}>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
+                  Coberturas Médicas Aceptadas
+                </h3>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: '4px 0 0' }}>
+                  Dr. {coberturasMedico.nombre} {coberturasMedico.apellido}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setCoberturasMedico(null)}
+                style={{ padding: '6px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {loadingDoctorCoberturas ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                Cargando coberturas del profesional...
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Filtrar coberturas (OSDE, Swiss, Galeno, Sancor...)"
+                      style={{ paddingLeft: '36px', width: '100%' }}
+                      value={coberturasSearch}
+                      onChange={e => setCoberturasSearch(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '6px' }}>
+                    Seleccionadas: <strong>{selectedOSIds.size}</strong> coberturas
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, overflowY: 'auto', maxHeight: '380px', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '12px' }}>
+                  {coberturasAllObras
+                    .filter(os => !coberturasSearch || os.nombre.toLowerCase().includes(coberturasSearch.toLowerCase()))
+                    .slice(0, 150)
+                    .map(os => {
+                      const isChecked = selectedOSIds.has(os.id);
+                      return (
+                        <label
+                          key={os.id}
+                          className="flex items-center gap-2"
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            background: isChecked ? 'rgba(37, 99, 235, 0.08)' : 'transparent',
+                            cursor: 'pointer',
+                            fontSize: '0.875rem',
+                            marginBottom: '4px'
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              const next = new Set(selectedOSIds);
+                              if (next.has(os.id)) next.delete(os.id);
+                              else next.add(os.id);
+                              setSelectedOSIds(next);
+                            }}
+                          />
+                          <span style={{ fontWeight: isChecked ? 600 : 400, color: isChecked ? 'var(--color-primary)' : 'inherit' }}>
+                            {os.nombre}
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+
+                <div className="flex items-center justify-between" style={{ marginTop: '20px', paddingTop: '12px', borderTop: '1px solid var(--color-border)' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      if (selectedOSIds.size > 0) setSelectedOSIds(new Set());
+                      else setSelectedOSIds(new Set(coberturasAllObras.map(o => o.id)));
+                    }}
+                  >
+                    {selectedOSIds.size > 0 ? 'Deseleccionar todas' : 'Seleccionar todas'}
+                  </button>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setCoberturasMedico(null)}
+                      disabled={savingDoctorCoberturas}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleSaveDoctorCoberturas}
+                      disabled={savingDoctorCoberturas}
+                    >
+                      {savingDoctorCoberturas ? 'Guardando...' : 'Guardar Coberturas'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
