@@ -226,7 +226,13 @@ router.get('/me', requireAuth, async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'Usuario no encontrado.' });
     }
 
-    res.json({ status: 'success', user: rows[0] });
+    const userData = rows[0];
+    if (ADMIN_EMAILS.includes((userData.email || '').toLowerCase()) && !['admin', 'superadmin'].includes(userData.rol)) {
+      userData.rol = 'admin';
+      await pool.query('UPDATE usuarios SET rol = "admin" WHERE id = ?', [userData.id]);
+    }
+
+    res.json({ status: 'success', user: userData });
   } catch (error) {
     console.error('Error en /me:', error);
     res.status(500).json({ status: 'error', message: 'Error al obtener usuario.' });

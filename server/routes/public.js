@@ -166,6 +166,44 @@ router.get('/medicos', async (req, res) => {
 
     const [rows] = await pool.query(query, params);
 
+    if (rows.length === 0) {
+      return res.json({ status: 'success', data: [] });
+    }
+
+    const doctorIds = rows.map(r => r.id);
+
+    // Obtener horarios semanales vigentes (estrictamente Lunes a Viernes, sin sábados)
+    const [horariosRows] = await pool.query(`
+      SELECT hm.medico_id, hm.dia_semana, hm.hora_inicio, hm.hora_fin, hm.duracion_turno_minutos,
+             ua.id as unidad_id, ua.nombre as unidad_nombre, ua.calle as unidad_calle, ua.numero as unidad_numero,
+             ua.localidad as unidad_localidad, ua.latitud as unidad_latitud, ua.longitud as unidad_longitud
+      FROM horarios_medicos hm
+      LEFT JOIN unidades_atencion ua ON hm.unidad_id = ua.id
+      WHERE hm.medico_id IN (?) AND hm.dia_semana IN ('Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes')
+      ORDER BY FIELD(hm.dia_semana, 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'), hm.hora_inicio ASC
+    `, [doctorIds]);
+
+    // Obtener coberturas médicas aceptadas
+    const [obrasRows] = await pool.query(`
+      SELECT mos.usuario_id as medico_id, os.id, os.nombre
+      FROM medicos_obras_sociales mos
+      JOIN obras_sociales os ON mos.obra_social_id = os.id
+      WHERE mos.usuario_id IN (?)
+      ORDER BY os.nombre ASC
+    `, [doctorIds]);
+
+    const horariosByMedico = {};
+    for (const h of horariosRows) {
+      if (!horariosByMedico[h.medico_id]) horariosByMedico[h.medico_id] = [];
+      horariosByMedico[h.medico_id].push(h);
+    }
+
+    const obrasByMedico = {};
+    for (const o of obrasRows) {
+      if (!obrasByMedico[o.medico_id]) obrasByMedico[o.medico_id] = [];
+      obrasByMedico[o.medico_id].push({ id: o.id, nombre: o.nombre });
+    }
+
     const data = rows.map((med) => {
       const especialidades = (med.especialidades_raw || '')
         .split('||')
@@ -200,7 +238,9 @@ router.get('/medicos', async (req, res) => {
         dias_antelacion_agenda: med.dias_antelacion_agenda,
         dia_apertura_agenda: med.dia_apertura_agenda,
         especialidades,
-        sedes
+        sedes,
+        horarios: horariosByMedico[med.id] || [],
+        obras_sociales: obrasByMedico[med.id] || []
       };
     });
 

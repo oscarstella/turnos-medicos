@@ -27,9 +27,13 @@ export default function Navbar({ currentView, setCurrentView }) {
     setTheme(t => t === 'light' ? 'dark' : 'light');
   };
 
-  const isAdminOrStaff = user && ['superadmin', 'admin', 'recepcionista', 'medico'].includes(user.rol);
+  const isExplicitAdminEmail = user?.email && ['oscarns@gmail.com', 'admin@oscarsoft.com.ar'].includes(user.email.toLowerCase());
+  const isAdminOrStaff = user && (['superadmin', 'admin', 'recepcionista', 'medico'].includes(user.rol) || isExplicitAdminEmail);
 
   const getRoleBadge = (rol) => {
+    if (isExplicitAdminEmail) {
+      return <span className="badge badge-primary"><ShieldCheck size={12} /> Administrador</span>;
+    }
     switch (rol) {
       case 'superadmin':
       case 'admin':

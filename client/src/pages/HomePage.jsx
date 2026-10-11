@@ -16,6 +16,26 @@ import {
   X
 } from 'lucide-react';
 
+function resolverCoordenadasSede(nombre, calle, numero, lat, lng) {
+  if (lat && lng && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+    return { lat: parseFloat(lat), lng: parseFloat(lng) };
+  }
+  const txt = `${nombre || ''} ${calle || ''} ${numero || ''}`.toLowerCase();
+  if (txt.includes('gutierrez') || txt.includes('gutiérrez') || txt.includes('980')) {
+    return { lat: -41.1415571, lng: -71.3132086 };
+  }
+  if (txt.includes('mitre') || txt.includes('124') || txt.includes('120')) {
+    return { lat: -41.1336564, lng: -71.3078764 };
+  }
+  if (txt.includes('frey') || txt.includes('111')) {
+    return { lat: -41.13452, lng: -71.30553 };
+  }
+  if (txt.includes('km') || txt.includes('bustillo') || txt.includes('1000')) {
+    return { lat: -41.131, lng: -71.325 };
+  }
+  return { lat: -41.1336564, lng: -71.3078764 };
+}
+
 export default function HomePage({ onSelectDoctor }) {
   const [especialidades, setEspecialidades] = useState([]);
   const [obrasSociales, setObrasSociales] = useState([]);
@@ -35,6 +55,9 @@ export default function HomePage({ onSelectDoctor }) {
   const [coberturasModalMedico, setCoberturasModalMedico] = useState(null);
   const [coberturasLoading, setCoberturasLoading] = useState(false);
   const [coberturasList, setCoberturasList] = useState([]);
+
+  // Modal de Mapa de Sede & Cómo llegar
+  const [mapaSedeModal, setMapaSedeModal] = useState({ visible: false, nombre: '', direccion: '', lat: null, lng: null });
 
   useEffect(() => {
     Promise.all([
@@ -79,16 +102,17 @@ export default function HomePage({ onSelectDoctor }) {
     setSearchTerm('');
   };
 
-  const handleVerCoberturas = async (medico) => {
+  const handleVerCoberturas = (medico) => {
     setCoberturasModalMedico(medico);
-    setCoberturasLoading(true);
-    try {
-      const res = await api.get(`/public/medicos/${medico.id}`);
-      setCoberturasList(res.data?.obras_sociales || []);
-    } catch {
-      setCoberturasList([]);
-    } finally {
+    if (medico.obras_sociales && medico.obras_sociales.length > 0) {
+      setCoberturasList(medico.obras_sociales);
       setCoberturasLoading(false);
+    } else {
+      setCoberturasLoading(true);
+      api.get(`/public/medicos/${medico.id}`)
+        .then(res => setCoberturasList(res.data?.obras_sociales || []))
+        .catch(() => setCoberturasList([]))
+        .finally(() => setCoberturasLoading(false));
     }
   };
 
@@ -285,30 +309,52 @@ export default function HomePage({ onSelectDoctor }) {
                   {/* Cuerpo de la tarjeta */}
                   <div style={{ padding: '0 20px 20px', flex: 1, display: 'flex', flexDirection: 'column' }}>
                     
-                    {/* Botón Ver Coberturas */}
+                    {/* Botón Ver Coberturas con contador */}
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
                       style={{
                         width: '100%',
-                        marginBottom: '12px',
+                        marginBottom: '10px',
                         fontSize: '0.75rem',
                         color: 'var(--color-primary)',
                         borderColor: 'var(--color-primary-light)',
-                        background: 'var(--color-primary-light)'
+                        background: 'var(--color-primary-light)',
+                        fontWeight: 600
                       }}
                       onClick={() => handleVerCoberturas(med)}
                     >
-                      <ShieldCheck size={14} /> Ver Obras Sociales Aceptadas
+                      <ShieldCheck size={14} /> Ver Coberturas {med.obras_sociales ? `(${med.obras_sociales.length})` : ''}
                     </button>
 
-                    {/* Sedes de Atención */}
+                    {/* Horarios de Atención Semanales (Lunes a Viernes) */}
+                    {med.horarios && med.horarios.length > 0 && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '10px', background: 'var(--color-bg)', padding: '6px 10px', borderRadius: '8px' }}>
+                        <div className="flex items-center gap-1 font-semibold" style={{ color: 'var(--color-text-main)' }}>
+                          <Clock size={12} style={{ color: 'var(--color-primary)' }} />
+                          <span>Atención: {med.horarios[0].hora_inicio ? med.horarios[0].hora_inicio.substring(0, 5) : '09:00'} a {med.horarios[0].hora_fin ? med.horarios[0].hora_fin.substring(0, 5) : '13:00'} hs</span>
+                        </div>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--color-text-subtle)', marginTop: '2px' }}>
+                          Lunes a Viernes
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sedes de Atención con botón clickeable para abrir mapa */}
                     {med.sedes && med.sedes.length > 0 && (
-                      <div className="flex items-center gap-1" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '14px' }}>
-                        <MapPin size={13} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {med.sedes.map(s => s.nombre).join(', ')}
-                        </span>
+                      <div className="flex flex-wrap gap-1" style={{ marginBottom: '14px' }}>
+                        {med.sedes.map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className="btn btn-secondary btn-xs"
+                            style={{ fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '12px' }}
+                            onClick={() => setMapaSedeModal({ visible: true, nombre: s.nombre, direccion: s.direccion || s.nombre, lat: s.latitud, lng: s.longitud })}
+                            title="Ver en Google Maps y Cómo llegar"
+                          >
+                            <MapPin size={11} style={{ color: 'var(--color-danger)' }} /> {s.nombre}
+                          </button>
+                        ))}
                       </div>
                     )}
 
@@ -372,6 +418,68 @@ export default function HomePage({ onSelectDoctor }) {
               <button className="btn btn-secondary" onClick={() => setCoberturasModalMedico(null)}>
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Ver Mapa de Sede & Cómo llegar */}
+      {mapaSedeModal.visible && (
+        <div className="modal-overlay">
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '640px' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '16px' }}>
+              <div className="flex items-center gap-2">
+                <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <MapPin size={20} style={{ color: 'var(--color-danger)' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.125rem', fontWeight: 800, margin: 0 }}>
+                    {mapaSedeModal.nombre}
+                  </h3>
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                    {mapaSedeModal.direccion}
+                  </div>
+                </div>
+              </div>
+              <button className="btn btn-secondary btn-xs" onClick={() => setMapaSedeModal({ visible: false, nombre: '', direccion: '', lat: null, lng: null })}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Iframe Google Maps */}
+            <div style={{ height: '340px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--color-border)', marginBottom: '16px' }}>
+              <iframe
+                title="Mapa de Sede"
+                width="100%"
+                height="100%"
+                style={{ border: 0 }}
+                loading="lazy"
+                src={`https://maps.google.com/maps?q=${resolverCoordenadasSede(mapaSedeModal.nombre, mapaSedeModal.direccion, '', mapaSedeModal.lat, mapaSedeModal.lng).lat},${resolverCoordenadasSede(mapaSedeModal.nombre, mapaSedeModal.direccion, '', mapaSedeModal.lat, mapaSedeModal.lng).lng}&hl=es&z=17&output=embed`}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                Ubicación exacta en San Carlos de Bariloche.
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setMapaSedeModal({ visible: false, nombre: '', direccion: '', lat: null, lng: null })}
+                >
+                  Cerrar
+                </button>
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${resolverCoordenadasSede(mapaSedeModal.nombre, mapaSedeModal.direccion, '', mapaSedeModal.lat, mapaSedeModal.lng).lat},${resolverCoordenadasSede(mapaSedeModal.nombre, mapaSedeModal.direccion, '', mapaSedeModal.lat, mapaSedeModal.lng).lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                >
+                  <MapPin size={14} /> Cómo llegar
+                </a>
+              </div>
             </div>
           </div>
         </div>

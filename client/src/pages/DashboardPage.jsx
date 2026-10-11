@@ -24,7 +24,7 @@ import {
   X
 } from 'lucide-react';
 
-const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo'];
+const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'];
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -475,7 +475,8 @@ export default function DashboardPage() {
           { id: 'especialidades', label: 'Especialidades', icon: Award, minRole: 'admin' },
           { id: 'sedes', label: 'Sedes y Consultorios', icon: Building2, minRole: 'admin' }
         ].filter(tab => {
-          if (tab.minRole === 'admin') return ['superadmin', 'admin'].includes(user?.rol);
+          const isUserAdmin = ['superadmin', 'admin'].includes(user?.rol) || (user?.email && ['oscarns@gmail.com', 'admin@oscarsoft.com.ar'].includes(user.email.toLowerCase()));
+          if (tab.minRole === 'admin') return isUserAdmin;
           return true;
         }).map(tab => {
           const Icon = tab.icon;

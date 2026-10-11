@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'oscarsoft_turnos_jwt_super_secret_key_2026!';
 
+const ADMIN_EMAILS = ['oscarns@gmail.com', 'admin@oscarsoft.com.ar'];
+
 function verifyToken(req) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return null;
@@ -19,13 +21,21 @@ function requireAuth(req, res, next) {
   if (!user) {
     return res.status(401).json({ status: 'error', message: 'No autorizado. Por favor inicia sesión.' });
   }
+  if (user.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+    user.rol = 'admin';
+  }
   req.user = user;
   next();
 }
 
 function optionalAuth(req, res, next) {
   const user = verifyToken(req);
-  if (user) req.user = user;
+  if (user) {
+    if (user.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+      user.rol = 'admin';
+    }
+    req.user = user;
+  }
   next();
 }
 
@@ -33,6 +43,9 @@ function requireRole(roles) {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ status: 'error', message: 'No autenticado.' });
+    }
+    if (req.user.email && ADMIN_EMAILS.includes(req.user.email.toLowerCase())) {
+      req.user.rol = 'admin';
     }
     const allowed = Array.isArray(roles) ? roles : [roles];
     if (!allowed.includes(req.user.rol)) {

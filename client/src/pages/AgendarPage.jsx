@@ -144,7 +144,7 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
   for (let i = 0; i <= totalDias; i++) {
     const d = new Date(baseDate);
     d.setDate(baseDate.getDate() + i);
-    if (d.getDay() === 0) continue; // Domingo sin atención
+    if (d.getDay() === 0 || d.getDay() === 6) continue; // Lunes a Viernes únicamente (sin Sábados ni Domingos)
 
     const monthKey = `${d.getFullYear()}-${d.getMonth()}`;
     const monthLabel = `${MESES_COMPLETOS[d.getMonth()]} ${d.getFullYear()}`;

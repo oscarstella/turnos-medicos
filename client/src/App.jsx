@@ -25,7 +25,8 @@ function MainApp() {
   };
 
   const handleLoginSuccess = (loggedUser) => {
-    if (['superadmin', 'admin', 'recepcionista', 'medico'].includes(loggedUser.rol)) {
+    const isExplicitAdmin = loggedUser?.email && ['oscarns@gmail.com', 'admin@oscarsoft.com.ar'].includes(loggedUser.email.toLowerCase());
+    if (['superadmin', 'admin', 'recepcionista', 'medico'].includes(loggedUser.rol) || isExplicitAdmin) {
       setCurrentView('dashboard');
     } else {
       setCurrentView('mis-turnos');
