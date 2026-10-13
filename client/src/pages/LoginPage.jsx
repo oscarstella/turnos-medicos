@@ -19,6 +19,7 @@ import {
 
 export default function LoginPage({ onLoginSuccess, initialRole = 'paciente' }) {
   const { login, register } = useAuth();
+  const [userType, setUserType] = useState(initialRole || 'paciente');
   const [isRegister, setIsRegister] = useState(() => {
     if (typeof window === 'undefined') return false;
     const searchParams = new URLSearchParams(window.location.search);

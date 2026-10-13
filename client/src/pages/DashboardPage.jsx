@@ -255,6 +255,7 @@ export default function DashboardPage() {
     if (!isDoctor) {
       fetchConfig();
       fetchObrasSociales();
+      fetchBotRespuestas();
     } else {
       // Cargar ficha y honorarios del médico
       api.get('/medico/perfil')
@@ -677,7 +678,8 @@ export default function DashboardPage() {
     setBotLoading(true);
     try {
       const res = await api.get('/admin/bot-respuestas');
-      setBotRespuestas(res.data?.data || []);
+      const items = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : (res?.data?.data || []));
+      setBotRespuestas(items);
     } catch (err) {
       console.error('Error al cargar respuestas del bot:', err);
       showToast('Error al cargar mensajes del bot');
@@ -941,8 +943,6 @@ export default function DashboardPage() {
           { id: 'medicos', label: 'Médicos & Staff', icon: Users, minRole: 'recepcionista' },
           { id: 'usuarios', label: 'Pacientes & Usuarios', icon: ShieldCheck, minRole: 'recepcionista' },
           { id: 'obras', label: 'Obras Sociales & Planes', icon: CreditCard, minRole: 'admin' },
-          { id: 'horarios', label: 'Configurador de Horarios', icon: Clock, minRole: 'admin' },
-          { id: 'reglas', label: 'Reglas de Agenda', icon: Settings, minRole: 'admin' },
           { id: 'especialidades', label: 'Especialidades', icon: Award, minRole: 'admin' },
           { id: 'sedes', label: 'Sedes y Consultorios', icon: Building2, minRole: 'admin' },
           { id: 'bot', label: 'Bot WhatsApp (Q&A)', icon: MessageSquare, minRole: 'admin' }

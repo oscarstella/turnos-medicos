@@ -13,7 +13,7 @@ router.get('/agenda', async (req, res) => {
     const { fecha, desde, hasta } = req.query;
 
     let query = `
-      SELECT t.id, t.fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
+      SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
              p.id as paciente_id, p.nombre as paciente_nombre, p.apellido as paciente_apellido,
              p.dni as paciente_dni, p.telefono as paciente_telefono, p.tiene_whatsapp as paciente_whatsapp,
              p.email as paciente_email,

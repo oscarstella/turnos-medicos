@@ -10,7 +10,7 @@ router.get('/turnos', async (req, res) => {
   try {
     const pacienteId = req.user.id;
     const [rows] = await pool.query(
-      `SELECT t.id, t.fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
+      `SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
               m.id as medico_id, m.nombre as medico_nombre, m.apellido as medico_apellido, m.foto_perfil, m.matricula,
               e.id as especialidad_id, e.nombre as especialidad_nombre,
               os.nombre as obra_social_nombre,

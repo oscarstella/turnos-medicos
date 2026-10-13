@@ -537,7 +537,7 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
             <div className="card" style={{ padding: '24px' }}>
               <div className="flex items-center justify-between" style={{ marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '1.125rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Clock size={18} style={{ color: 'var(--color-primary)' }} /> Horarios para el {selectedDate}
+                  <Clock size={18} style={{ color: 'var(--color-primary)' }} /> Horarios para el {formatFechaArgentina(selectedDate)}
                 </h3>
                 {selectedSlot && (
                   <span className="badge badge-success">

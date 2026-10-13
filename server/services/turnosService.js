@@ -460,27 +460,65 @@ async function crearTurno(datos, usuarioLogueadoId = null) {
   }
 }
 
-const MESES_NOMBRES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const MESES_NOMBRES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const DIAS_NOMBRES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-function formatearFechaTexto(fechaStr) {
-  const [y, m, d] = fechaStr.split('-').map(Number);
+/** Extrae 'YYYY-MM-DD' limpiamente de cualquier tipo (Date, string ISO o fecha cruda) */
+function normalizarFechaYMD(fechaInput) {
+  if (!fechaInput) return '';
+  if (fechaInput instanceof Date) {
+    const y = fechaInput.getFullYear();
+    const m = String(fechaInput.getMonth() + 1).padStart(2, '0');
+    const d = String(fechaInput.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const str = String(fechaInput).trim();
+  const matchIso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (matchIso) {
+    return `${matchIso[1]}-${matchIso[2]}-${matchIso[3]}`;
+  }
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return str.split('T')[0];
+}
+
+/** Formatea una fecha en texto argentino completo, ej: 'Lunes 19 de octubre' */
+function formatearFechaTexto(fechaInput) {
+  const ymd = normalizarFechaYMD(fechaInput);
+  if (!ymd || !ymd.includes('-')) return String(fechaInput || '');
+  const [y, m, d] = ymd.split('-').map(Number);
   const dateObj = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
   const diaSemana = DIAS_NOMBRES[dateObj.getUTCDay()];
   const mes = MESES_NOMBRES[m - 1];
   return `${diaSemana} ${d} de ${mes}`;
 }
 
-/** Formatea una fecha 'YYYY-MM-DD' al formato estándar argentino 'DD/MM/AAAA' */
-function formatearFechaCorta(fechaStr) {
-  if (!fechaStr) return '';
-  const clean = String(fechaStr).split('T')[0];
-  const parts = clean.split('-');
-  if (parts.length === 3) {
-    const [y, m, d] = parts;
-    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
-  }
-  return fechaStr;
+/** Formatea una fecha al formato estándar argentino 'DD/MM/AAAA' */
+function formatearFechaCorta(fechaInput) {
+  const ymd = normalizarFechaYMD(fechaInput);
+  if (!ymd || !ymd.includes('-')) return String(fechaInput || '');
+  const [y, m, d] = ymd.split('-');
+  return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+}
+
+/** Formatea la hora en formato 24hs 'HH:mm' */
+function formatearHora24(horaInput) {
+  if (!horaInput) return '';
+  return String(horaInput).trim().substring(0, 5);
+}
+
+/** Formatea un turno completo en argentino: 'Lunes 19 de octubre a las 10:30 hs (19/10/2026)' */
+function formatearTurnoCompleto(fechaInput, horaInput) {
+  const fTexto = formatearFechaTexto(fechaInput);
+  const fCorta = formatearFechaCorta(fechaInput);
+  const hora = formatearHora24(horaInput);
+  if (!hora) return `${fTexto} (${fCorta})`;
+  return `${fTexto} a las ${hora} hs (${fCorta})`;
 }
 
 /**
@@ -537,6 +575,9 @@ module.exports = {
   sumarDias,
   formatearFechaTexto,
   formatearFechaCorta,
+  formatearHora24,
+  formatearTurnoCompleto,
+  normalizarFechaYMD,
   calcularProximasFechas,
   getMaxDiasAgenda,
   getPlanes,

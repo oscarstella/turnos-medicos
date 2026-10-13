@@ -49,7 +49,7 @@ export default function Navbar({ currentView, setCurrentView }) {
   };
 
   const handleMedicosClick = () => {
-    if (user?.rol === 'medico') {
+    if (user?.rol === 'medico' || isAdminOrStaff) {
       setCurrentView('dashboard');
     } else {
       setCurrentView('login-medico');

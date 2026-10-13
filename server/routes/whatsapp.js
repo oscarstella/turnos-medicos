@@ -9,6 +9,10 @@ const {
   crearTurno,
   calcularProximasFechas,
   formatearFechaCorta,
+  formatearFechaTexto,
+  formatearHora24,
+  formatearTurnoCompleto,
+  normalizarFechaYMD,
   ServiceError
 } = require('../services/turnosService');
 
@@ -45,10 +49,11 @@ async function getBotMessage(clave, fallback, variables = {}) {
 async function checkCustomTrigger(userText) {
   try {
     const [rows] = await pool.query(
-      'SELECT mensaje FROM bot_respuestas WHERE activo = 1 AND disparador IS NOT NULL AND disparador != ""'
+      'SELECT disparador, mensaje FROM bot_respuestas WHERE activo = 1 AND disparador IS NOT NULL AND disparador != ""'
     );
-    const lower = userText.toLowerCase().trim();
+    const lower = (userText || '').toLowerCase().trim();
     for (const r of rows) {
+      if (!r.disparador) continue;
       const keywords = r.disparador.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
       if (keywords.some(k => lower === k || lower.includes(k))) {
         return r.mensaje;
@@ -799,7 +804,7 @@ _¡Muchas gracias por confiar en OscarSoft Turnos!_`,
       session.paciente = users[0];
 
       const [turnos] = await pool.query(
-        `SELECT t.id, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
+        `SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado,
                 m.nombre as medico_nombre, m.apellido as medico_apellido,
                 ua.nombre as sede_nombre, ua.calle, ua.numero
          FROM turnos t
@@ -822,8 +827,8 @@ _¡Muchas gracias por confiar en OscarSoft Turnos!_`,
 
       let resp = `📅 *Tus próximos turnos agendados (${session.paciente.nombre} ${session.paciente.apellido}):*\n\n`;
       turnos.forEach((t, i) => {
-        const fechaArg = formatearFechaCorta(t.fecha);
-        resp += `${i + 1}️⃣ 🗓 *${fechaArg}* a las *${t.hora_inicio.substring(0, 5)} hs*\n`;
+        const fechaHoraCompleta = formatearTurnoCompleto(t.fecha, t.hora_inicio);
+        resp += `${i + 1}️⃣ 🗓 *${fechaHoraCompleta}*\n`;
         resp += `    👨‍⚕️ Dr. ${t.medico_nombre} ${t.medico_apellido}\n`;
         if (t.sede_nombre) resp += `    📍 ${t.sede_nombre}${t.calle ? ` (${t.calle} ${t.numero || ''})` : ''}\n`;
         resp += `    📌 Estado: *${t.estado.toUpperCase()}*\n\n`;
@@ -893,19 +898,19 @@ _¡Muchas gracias por confiar en OscarSoft Turnos!_`,
         await pool.query('UPDATE turnos SET estado = "cancelado" WHERE id = ?', [turno.id]);
 
         session.step = 'INIT';
-        const fechaArg = formatearFechaCorta(turno.fecha);
+        const fechaHoraCompleta = formatearTurnoCompleto(turno.fecha, turno.hora_inicio);
         const msgCancelExito = await getBotMessage(
           'turno_cancelado_exito',
 `✅ *¡Turno cancelado exitosamente!*
 
-Tu turno #{turno_id} con el Dr. {medico_nombre} para el día {fecha} a las {hora} hs ha sido cancelado.
+Tu turno #{turno_id} con el Dr. {medico_nombre} para el {fecha} ha sido cancelado.
 
 El horario ha quedado liberado en el sistema. Escribí *menu* para volver al inicio.`,
           {
             turno_id: turno.id,
             medico_nombre: `${turno.medico_nombre} ${turno.medico_apellido}`,
-            fecha: fechaArg,
-            hora: turno.hora_inicio.substring(0, 5)
+            fecha: fechaHoraCompleta,
+            hora: formatearHora24(turno.hora_inicio)
           }
         );
 
@@ -957,7 +962,7 @@ async function iniciarFlujoCancelacion(phone, session) {
 async function buscarYConfirmarCancelacion(phone, session) {
   try {
     const [turnos] = await pool.query(
-      `SELECT t.id, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
+      `SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado,
               m.nombre as medico_nombre, m.apellido as medico_apellido,
               ua.nombre as sede_nombre, e.nombre as especialidad_nombre
        FROM turnos t
@@ -988,8 +993,8 @@ async function buscarYConfirmarCancelacion(phone, session) {
 
     let msgList = `📋 *Seleccioná cuál de tus turnos deseas cancelar:*\n\n`;
     turnos.forEach((t, i) => {
-      const fechaArg = formatearFechaCorta(t.fecha);
-      msgList += `*${i + 1}* - Dr. ${t.medico_nombre} ${t.medico_apellido} (🗓 ${fechaArg} a las ⏰ ${t.hora_inicio.substring(0, 5)} hs)\n`;
+      const fechaHoraCompleta = formatearTurnoCompleto(t.fecha, t.hora_inicio);
+      msgList += `*${i + 1}* - Dr. ${t.medico_nombre} ${t.medico_apellido} (🗓 *${fechaHoraCompleta}*)\n`;
     });
     msgList += `\n_Respondé con el número del turno que deseas cancelar (o *menu* para volver):_`;
 
@@ -1007,7 +1012,7 @@ async function buscarYConfirmarCancelacion(phone, session) {
 async function preguntarConfirmacionCancelacion(phone, session) {
   session.step = 'AWAIT_CANCEL_CONFIRMATION';
   const t = session.turnoSeleccionadoCancelar;
-  const fechaArg = formatearFechaCorta(t.fecha);
+  const fechaHoraCompleta = formatearTurnoCompleto(t.fecha, t.hora_inicio);
 
   const confirmMsg = await getBotMessage(
     'confirmar_cancelacion_prompt',
@@ -1015,7 +1020,7 @@ async function preguntarConfirmacionCancelacion(phone, session) {
 
 🔖 *Turno:* #{turno_id}
 👨‍⚕️ *Profesional:* Dr. {medico_nombre}
-🗓 *Fecha:* {fecha} ({hora} hs)
+🗓 *Fecha y Hora:* {fecha}
 📍 *Sede:* {sede}
 
 Respondé:
@@ -1024,8 +1029,8 @@ Respondé:
     {
       turno_id: t.id,
       medico_nombre: `${t.medico_nombre} ${t.medico_apellido}`,
-      fecha: fechaArg,
-      hora: t.hora_inicio.substring(0, 5),
+      fecha: fechaHoraCompleta,
+      hora: formatearHora24(t.hora_inicio),
       sede: t.sede_nombre || 'Consultorio'
     }
   );

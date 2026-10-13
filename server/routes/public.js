@@ -691,7 +691,7 @@ router.post('/agendar', optionalAuth, async (req, res) => {
 
     // Obtener detalles del turno para respuesta clara
     const [created] = await pool.query(
-      `SELECT t.id, t.fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas,
+      `SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas,
               m.nombre as medico_nombre, m.apellido as medico_apellido,
               p.nombre as paciente_nombre, p.apellido as paciente_apellido, p.dni as paciente_dni,
               e.nombre as especialidad_nombre,
@@ -744,7 +744,7 @@ router.get('/turnos-por-dni', async (req, res) => {
 
     const paciente = pacRows[0];
     const [rows] = await pool.query(
-      `SELECT t.id, t.fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
+      `SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
               m.id as medico_id, m.nombre as medico_nombre, m.apellido as medico_apellido, m.foto_perfil, m.matricula,
               e.id as especialidad_id, e.nombre as especialidad_nombre,
               os.nombre as obra_social_nombre,
@@ -786,7 +786,7 @@ router.put('/turnos/:id/cancelar', async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT t.id, t.estado, t.fecha, p.dni as paciente_dni
+      `SELECT t.id, t.estado, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, p.dni as paciente_dni
        FROM turnos t
        JOIN usuarios p ON t.paciente_id = p.id
        WHERE t.id = ? LIMIT 1`,
