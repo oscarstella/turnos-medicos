@@ -5,3 +5,6 @@ client/dist/
 .env
 .DS_Store
 *.log
+whatsapp_datos.txt
+whatsapp_*.txt
+*.env

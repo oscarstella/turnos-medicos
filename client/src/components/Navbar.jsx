@@ -10,7 +10,8 @@ import {
   Sun, 
   Menu, 
   X,
-  ShieldCheck
+  ShieldCheck,
+  Stethoscope
 } from 'lucide-react';
 
 export default function Navbar({ currentView, setCurrentView }) {
@@ -45,6 +46,15 @@ export default function Navbar({ currentView, setCurrentView }) {
       default:
         return <span className="badge badge-neutral">Paciente</span>;
     }
+  };
+
+  const handleMedicosClick = () => {
+    if (user?.rol === 'medico') {
+      setCurrentView('dashboard');
+    } else {
+      setCurrentView('login-medico');
+    }
+    setMobileMenuOpen(false);
   };
 
   return (
@@ -93,6 +103,14 @@ export default function Navbar({ currentView, setCurrentView }) {
             onClick={() => setCurrentView('home')}
           >
             <Calendar size={16} /> Buscar Turno
+          </button>
+
+          <button 
+            className={`btn ${currentView === 'login-medico' || (user?.rol === 'medico' && currentView === 'dashboard') ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+            onClick={handleMedicosClick}
+            style={{ fontWeight: 600 }}
+          >
+            <Stethoscope size={16} /> Médicos
           </button>
 
           {user && (
@@ -173,6 +191,13 @@ export default function Navbar({ currentView, setCurrentView }) {
               onClick={() => { setCurrentView('home'); setMobileMenuOpen(false); }}
             >
               <span className="flex items-center gap-2"><Calendar size={18} /> Buscar Turno</span>
+            </button>
+
+            <button 
+              className={`btn ${currentView === 'login-medico' || (user?.rol === 'medico' && currentView === 'dashboard') ? 'btn-primary' : 'btn-secondary'} justify-between`}
+              onClick={handleMedicosClick}
+            >
+              <span className="flex items-center gap-2"><Stethoscope size={18} /> Portal Médicos</span>
             </button>
 
             {user && (

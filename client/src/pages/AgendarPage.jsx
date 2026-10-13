@@ -20,6 +20,17 @@ import {
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
+function formatFechaArgentina(fechaStr) {
+  if (!fechaStr) return '';
+  const clean = String(fechaStr).split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    const [y, m, d] = parts;
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  }
+  return fechaStr;
+}
+
 export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
   const { user } = useAuth();
   const [doctorDetail, setDoctorDetail] = useState(null);
@@ -306,7 +317,7 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
               </div>
               <div className="flex items-center justify-between border-bottom pb-2">
                 <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Fecha:</span>
-                <span style={{ fontWeight: 700 }}>{bookingConfirmed.fecha}</span>
+                <span style={{ fontWeight: 700 }}>{formatFechaArgentina(bookingConfirmed.fecha)}</span>
               </div>
               <div className="flex items-center justify-between border-bottom pb-2">
                 <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Horario:</span>
@@ -571,7 +582,7 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
                     <div className="glass-panel animate-fade-in flex items-center justify-between" style={{ padding: '16px 20px', borderColor: 'var(--color-primary)' }}>
                       <div>
                         <div style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>
-                          Turno elegido: {selectedDate} a las {selectedSlot.hora_inicio} hs
+                          Turno elegido: {formatFechaArgentina(selectedDate)} a las {selectedSlot.hora_inicio.substring(0, 5)} hs
                         </div>
                         <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
                           {selectedSlot.unidad_nombre || 'Consultorio principal'}
@@ -599,7 +610,7 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
               Completar Reserva del Turno
             </h3>
             <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '20px' }}>
-              Turno con <strong>Dr. {doctor.nombre} {doctor.apellido}</strong> el {selectedDate} a las {selectedSlot?.hora_inicio} hs.
+              Turno con <strong>Dr. {doctor.nombre} {doctor.apellido}</strong> el {formatFechaArgentina(selectedDate)} a las {selectedSlot?.hora_inicio?.substring(0, 5)} hs.
             </p>
 
             {errorMsg && (

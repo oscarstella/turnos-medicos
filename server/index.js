@@ -11,6 +11,7 @@ const publicRoutes = require('./routes/public');
 const pacienteRoutes = require('./routes/paciente');
 const medicoRoutes = require('./routes/medico');
 const adminRoutes = require('./routes/admin');
+const whatsappRoutes = require('./routes/whatsapp');
 
 const app = express();
 const PORT = process.env.PORT || 5060;
@@ -30,6 +31,7 @@ app.use(['/api/public', '/api/turnos/public'], publicRoutes);
 app.use(['/api/paciente', '/api/turnos/paciente'], pacienteRoutes);
 app.use(['/api/medico', '/api/turnos/medico'], medicoRoutes);
 app.use(['/api/admin', '/api/turnos/admin'], adminRoutes);
+app.use(['/api/whatsapp', '/api/turnos/whatsapp'], whatsappRoutes);
 
 // Servir frontend React compilado si existe
 const distPath = path.join(__dirname, '../client/dist');

@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 
+const ADMIN_EMAILS = ['oscarns@gmail.com', 'admin@oscarsoft.com.ar'];
+
 function normalizeDni(dni) {
   if (!dni) return null;
   const digits = String(dni).replace(/\D+/g, '');
@@ -64,8 +66,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'Contraseña incorrecta.' });
     }
 
-const ADMIN_EMAILS = ['oscarns@gmail.com', 'admin@oscarsoft.com.ar'];
-
     // Auto-promover a admin si el email corresponde al administrador
     if (ADMIN_EMAILS.includes(user.email.toLowerCase()) && !['admin', 'superadmin'].includes(user.rol)) {
       user.rol = 'admin';
@@ -98,7 +98,11 @@ const ADMIN_EMAILS = ['oscarns@gmail.com', 'admin@oscarsoft.com.ar'];
         obra_social_id: user.obra_social_id,
         plan_id: user.plan_id,
         foto_perfil: user.foto_perfil,
-        matricula: user.matricula
+        matricula: user.matricula,
+        slug: user.slug,
+        acepta_particular: user.acepta_particular,
+        honorarios_particular: user.honorarios_particular,
+        mostrar_honorarios: user.mostrar_honorarios
       }
     });
   } catch (error) {
@@ -107,7 +111,7 @@ const ADMIN_EMAILS = ['oscarns@gmail.com', 'admin@oscarsoft.com.ar'];
   }
 });
 
-// Registro de nuevo paciente / usuario
+// Registro de nuevo usuario (paciente o médico)
 router.post('/register', async (req, res) => {
   try {
     const {
@@ -120,7 +124,14 @@ router.post('/register', async (req, res) => {
       tiene_whatsapp = 1,
       fecha_nacimiento,
       obra_social_id,
-      plan_id
+      plan_id,
+      // Opciones para Médicos
+      rol,
+      matricula,
+      especialidad_id,
+      acepta_particular = true,
+      honorarios_particular = null,
+      mostrar_honorarios = false
     } = req.body;
 
     if (!email || !password || !nombre || !apellido || !dni) {
@@ -151,12 +162,31 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const initialRole = ADMIN_EMAILS.includes(cleanEmail) ? 'admin' : 'paciente';
+    const isDoctor = rol === 'medico';
+    let initialRole = 'paciente';
+    if (ADMIN_EMAILS.includes(cleanEmail)) {
+      initialRole = 'admin';
+    } else if (isDoctor) {
+      initialRole = 'medico';
+    }
+
+    // Generar slug para el médico (ej: bocianjorge)
+    let doctorSlug = null;
+    if (initialRole === 'medico') {
+      const cleanNombre = (nombre || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+      const cleanApellido = (apellido || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+      let baseSlug = (cleanApellido + cleanNombre) || `medico${Date.now()}`;
+      doctorSlug = baseSlug;
+      const [slugRows] = await pool.query('SELECT id FROM usuarios WHERE slug = ? LIMIT 1', [doctorSlug]);
+      if (slugRows.length > 0) {
+        doctorSlug = `${baseSlug}${Math.floor(100 + Math.random() * 900)}`;
+      }
+    }
 
     const [result] = await pool.query(
       `INSERT INTO usuarios 
-       (email, contrasena, nombre, apellido, dni, telefono, tiene_whatsapp, fecha_nacimiento, obra_social_id, plan_id, rol)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (email, contrasena, nombre, apellido, dni, telefono, tiene_whatsapp, fecha_nacimiento, obra_social_id, plan_id, rol, matricula, slug, acepta_particular, honorarios_particular, mostrar_honorarios, dias_antelacion_agenda)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         cleanEmail,
         hashedPassword,
@@ -168,11 +198,45 @@ router.post('/register', async (req, res) => {
         fecha_nacimiento || null,
         obra_social_id || null,
         plan_id || null,
-        initialRole
+        initialRole,
+        initialRole === 'medico' && matricula ? matricula.trim() : null,
+        doctorSlug,
+        initialRole === 'medico' ? (acepta_particular ? 1 : 0) : 1,
+        initialRole === 'medico' && honorarios_particular && !isNaN(Number(honorarios_particular)) ? Number(honorarios_particular) : null,
+        initialRole === 'medico' ? (mostrar_honorarios ? 1 : 0) : 0,
+        initialRole === 'medico' ? 60 : null
       ]
     );
 
     const newId = result.insertId;
+
+    // Si es médico y especificó especialidad, asociarla
+    if (initialRole === 'medico' && especialidad_id) {
+      try {
+        await pool.query('INSERT IGNORE INTO medicos_especialidades (usuario_id, especialidad_id) VALUES (?, ?)', [newId, especialidad_id]);
+      } catch (espErr) {
+        console.warn('Error vinculando especialidad inicial:', espErr.message);
+      }
+    }
+
+    // Si es médico, crear horarios por defecto de Lunes a Viernes de 08:00 a 14:00 (30m)
+    if (initialRole === 'medico') {
+      try {
+        const defaultHorarios = [
+          [newId, 'Lunes', '08:00:00', '14:00:00', 30, 1],
+          [newId, 'Martes', '08:00:00', '14:00:00', 30, 1],
+          [newId, 'Miercoles', '08:00:00', '14:00:00', 30, 1],
+          [newId, 'Jueves', '08:00:00', '14:00:00', 30, 1],
+          [newId, 'Viernes', '08:00:00', '14:00:00', 30, 1]
+        ];
+        await pool.query(
+          'INSERT INTO horarios_medicos (medico_id, dia_semana, hora_inicio, hora_fin, duracion_turno_minutos, unidad_id) VALUES ?',
+          [defaultHorarios]
+        );
+      } catch (horErr) {
+        console.warn('Error creando horarios por defecto del médico:', horErr.message);
+      }
+    }
 
     const payload = {
       id: newId,
@@ -198,7 +262,12 @@ router.post('/register', async (req, res) => {
         tiene_whatsapp: !!tiene_whatsapp,
         rol: initialRole,
         obra_social_id,
-        plan_id
+        plan_id,
+        matricula: initialRole === 'medico' ? matricula : null,
+        slug: doctorSlug,
+        acepta_particular: initialRole === 'medico' ? !!acepta_particular : true,
+        honorarios_particular: initialRole === 'medico' ? honorarios_particular : null,
+        mostrar_honorarios: initialRole === 'medico' ? !!mostrar_honorarios : false
       }
     });
   } catch (error) {
@@ -214,6 +283,7 @@ router.get('/me', requireAuth, async (req, res) => {
       `SELECT u.id, u.email, u.nombre, u.apellido, u.dni, u.telefono, u.tiene_whatsapp,
               u.fecha_nacimiento, u.rol, u.obra_social_id, u.plan_id, u.foto_perfil,
               u.biografia, u.direccion, u.matricula, u.dias_antelacion_agenda, u.dia_apertura_agenda,
+              u.acepta_particular, u.honorarios_particular, u.mostrar_honorarios, u.slug,
               os.nombre as obra_social_nombre, p.nombre as plan_nombre
        FROM usuarios u
        LEFT JOIN obras_sociales os ON u.obra_social_id = os.id

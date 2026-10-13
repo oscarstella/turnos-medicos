@@ -11,19 +11,28 @@ import {
   ArrowRight, 
   HeartPulse,
   Eye,
-  EyeOff
+  EyeOff,
+  Stethoscope,
+  Award,
+  DollarSign
 } from 'lucide-react';
 
-export default function LoginPage({ onLoginSuccess }) {
+export default function LoginPage({ onLoginSuccess, initialRole = 'paciente' }) {
   const { login, register } = useAuth();
-  const [isRegister, setIsRegister] = useState(false);
+  const [isRegister, setIsRegister] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const searchParams = new URLSearchParams(window.location.search);
+    return searchParams.get('registro') === '1' || 
+           searchParams.get('registro') === 'true' || 
+           window.location.pathname.includes('registro');
+  });
   const [showPassword, setShowPassword] = useState(false);
 
   // Formulario Login
   const [loginId, setLoginId] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
-  // Formulario Register
+  // Formulario Register Paciente
   const [regForm, setRegForm] = useState({
     nombre: '',
     apellido: '',
@@ -38,13 +47,26 @@ export default function LoginPage({ onLoginSuccess }) {
 
   const [obrasSociales, setObrasSociales] = useState([]);
   const [planes, setPlanes] = useState([]);
+  const [especialidades, setEspecialidades] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialRole) {
+      setUserType(initialRole);
+    }
+  }, [initialRole]);
 
   useEffect(() => {
     api.get('/public/obras-sociales')
       .then((res) => {
         if (res.data) setObrasSociales(res.data);
+      })
+      .catch(console.error);
+
+    api.get('/public/especialidades')
+      .then((res) => {
+        if (res.data) setEspecialidades(res.data);
       })
       .catch(console.error);
   }, []);
@@ -75,12 +97,12 @@ export default function LoginPage({ onLoginSuccess }) {
     }
   };
 
-  const handleRegister = async (e) => {
+  const handleRegisterPaciente = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setLoading(true);
     try {
-      const newUser = await register(regForm);
+      const newUser = await register({ ...regForm, rol: 'paciente' });
       onLoginSuccess(newUser);
     } catch (err) {
       setErrorMsg(err.message || 'Error al registrar la cuenta.');
@@ -90,16 +112,69 @@ export default function LoginPage({ onLoginSuccess }) {
   };
 
   return (
-    <div className="container animate-fade-in" style={{ padding: '60px 24px 100px' }}>
-      <div className="glass-panel" style={{ maxWidth: '480px', margin: '0 auto', padding: '36px 32px' }}>
+    <div className="container animate-fade-in" style={{ padding: '40px 24px 100px' }}>
+      <div className="glass-panel" style={{ maxWidth: '520px', margin: '0 auto', padding: '36px 32px' }}>
         
+        {/* Selector de Tipo de Usuario: Paciente vs Médico */}
+        <div style={{
+          display: 'flex',
+          background: 'var(--color-bg)',
+          padding: '4px',
+          borderRadius: '14px',
+          marginBottom: '24px',
+          border: '1px solid var(--color-border)'
+        }}>
+          <button
+            type="button"
+            className="btn btn-sm"
+            style={{
+              flex: 1,
+              borderRadius: '10px',
+              border: 'none',
+              fontWeight: userType === 'paciente' ? 700 : 500,
+              background: userType === 'paciente' ? 'var(--color-surface)' : 'transparent',
+              boxShadow: userType === 'paciente' ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
+              color: userType === 'paciente' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+            onClick={() => { setUserType('paciente'); setErrorMsg(''); }}
+          >
+            <User size={16} /> Soy Paciente
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            style={{
+              flex: 1,
+              borderRadius: '10px',
+              border: 'none',
+              fontWeight: userType === 'medico' ? 700 : 500,
+              background: userType === 'medico' ? 'var(--color-surface)' : 'transparent',
+              boxShadow: userType === 'medico' ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
+              color: userType === 'medico' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+            onClick={() => { setUserType('medico'); setErrorMsg(''); }}
+          >
+            <Stethoscope size={16} /> Soy Médico / Profesional
+          </button>
+        </div>
+
         {/* Header del Formulario */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <div style={{
             width: '56px',
             height: '56px',
             borderRadius: '16px',
-            background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))',
+            background: userType === 'medico' 
+              ? 'linear-gradient(135deg, #059669, #0284c7)' 
+              : 'linear-gradient(135deg, var(--color-primary), var(--color-accent))',
             color: 'white',
             display: 'flex',
             alignItems: 'center',
@@ -107,45 +182,71 @@ export default function LoginPage({ onLoginSuccess }) {
             margin: '0 auto 16px',
             boxShadow: '0 8px 20px rgba(2, 132, 199, 0.25)'
           }}>
-            <HeartPulse size={28} />
+            {userType === 'medico' ? <Stethoscope size={28} /> : <HeartPulse size={28} />}
           </div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>
-            {isRegister ? 'Crear Cuenta de Paciente' : 'Iniciar Sesión'}
+            {userType === 'medico' 
+              ? 'Portal Exclusivo Médicos'
+              : (isRegister ? 'Crear Cuenta de Paciente' : 'Iniciar Sesión')}
           </h2>
           <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            {isRegister ? 'Completa tus datos para gestionar y reservar citas' : 'Ingresa con tu DNI o Correo Electrónico'}
+            {userType === 'medico'
+              ? 'Ingresá con tu DNI o Correo y la contraseña asignada por el Administrador'
+              : (isRegister 
+                  ? 'Completa tus datos para gestionar y reservar citas' 
+                  : 'Ingresá con tu DNI o Correo Electrónico')}
           </p>
         </div>
 
-        {/* Toggle Login / Register */}
-        <div className="flex" style={{ background: 'var(--color-bg)', padding: '4px', borderRadius: '12px', marginBottom: '24px' }}>
-          <button
-            type="button"
-            className="btn btn-sm"
-            style={{
-              flex: 1,
-              background: !isRegister ? 'var(--color-surface)' : 'transparent',
-              boxShadow: !isRegister ? 'var(--shadow-sm)' : 'none',
-              color: !isRegister ? 'var(--color-text-main)' : 'var(--color-text-muted)'
-            }}
-            onClick={() => { setIsRegister(false); setErrorMsg(''); }}
-          >
-            Iniciar Sesión
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm"
-            style={{
-              flex: 1,
-              background: isRegister ? 'var(--color-surface)' : 'transparent',
-              boxShadow: isRegister ? 'var(--shadow-sm)' : 'none',
-              color: isRegister ? 'var(--color-text-main)' : 'var(--color-text-muted)'
-            }}
-            onClick={() => { setIsRegister(true); setErrorMsg(''); }}
-          >
-            Registrarme
-          </button>
-        </div>
+        {/* Notificación para Médicos o Toggle para Pacientes */}
+        {userType === 'medico' ? (
+          <div style={{
+            marginBottom: '20px',
+            padding: '12px 16px',
+            borderRadius: '12px',
+            background: 'rgba(2, 132, 199, 0.08)',
+            border: '1px solid rgba(2, 132, 199, 0.2)',
+            fontSize: '0.8125rem',
+            color: 'var(--color-text-muted)',
+            lineHeight: 1.4
+          }}>
+            <strong style={{ color: 'var(--color-primary)', display: 'block', marginBottom: '2px' }}>
+              Acceso asignado por Administración:
+            </strong>
+            El usuario y la contraseña de los profesionales médicos son adjudicados desde el panel de administración. Si aún no tienes tus credenciales de ingreso, comunícate con la administración de la clínica.
+          </div>
+        ) : (
+          <div className="flex" style={{ background: 'var(--color-bg)', padding: '4px', borderRadius: '12px', marginBottom: '24px' }}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              style={{
+                flex: 1,
+                background: !isRegister ? 'var(--color-surface)' : 'transparent',
+                boxShadow: !isRegister ? 'var(--shadow-sm)' : 'none',
+                color: !isRegister ? 'var(--color-text-main)' : 'var(--color-text-muted)',
+                fontWeight: !isRegister ? 700 : 500
+              }}
+              onClick={() => { setIsRegister(false); setErrorMsg(''); }}
+            >
+              Iniciar Sesión
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              style={{
+                flex: 1,
+                background: isRegister ? 'var(--color-surface)' : 'transparent',
+                boxShadow: isRegister ? 'var(--shadow-sm)' : 'none',
+                color: isRegister ? 'var(--color-text-main)' : 'var(--color-text-muted)',
+                fontWeight: isRegister ? 700 : 500
+              }}
+              onClick={() => { setIsRegister(true); setErrorMsg(''); }}
+            >
+              Registrarme
+            </button>
+          </div>
+        )}
 
         {errorMsg && (
           <div style={{
@@ -160,8 +261,8 @@ export default function LoginPage({ onLoginSuccess }) {
           </div>
         )}
 
-        {!isRegister ? (
-          /* FORMULARIO LOGIN */
+        {(!isRegister || userType === 'medico') ? (
+          /* FORMULARIO LOGIN (Común para Paciente y Médico) */
           <form onSubmit={handleLogin}>
             <div className="form-group">
               <label className="form-label">DNI o Correo Electrónico</label>
@@ -170,7 +271,7 @@ export default function LoginPage({ onLoginSuccess }) {
                   type="text"
                   className="form-input"
                   required
-                  placeholder="Ej: 38123456 o usuario@email.com"
+                  placeholder={userType === 'medico' ? 'DNI o Correo del profesional' : 'Ej: 38123456 o paciente@email.com'}
                   value={loginId}
                   onChange={(e) => setLoginId(e.target.value)}
                 />
@@ -184,7 +285,7 @@ export default function LoginPage({ onLoginSuccess }) {
                   type={showPassword ? 'text' : 'password'}
                   className="form-input"
                   required
-                  placeholder="Tu contraseña"
+                  placeholder="Tu contraseña asignada"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   style={{ paddingRight: '42px' }}
@@ -214,29 +315,16 @@ export default function LoginPage({ onLoginSuccess }) {
               disabled={loading}
               style={{ width: '100%', marginTop: '8px' }}
             >
-              {loading ? 'Ingresando...' : 'Ingresar a mi cuenta'} <ArrowRight size={16} />
+              {loading ? 'Ingresando...' : (userType === 'medico' ? 'Ingresar a mi Panel Médico' : 'Ingresar a mi cuenta')} <ArrowRight size={16} />
             </button>
 
-            {/* Credenciales iniciales */}
-            <div style={{
-              marginTop: '24px',
-              padding: '12px',
-              borderRadius: '10px',
-              background: 'var(--color-bg)',
-              fontSize: '0.75rem',
-              color: 'var(--color-text-muted)',
-              border: '1px dashed var(--color-border)'
-            }}>
-              <strong style={{ color: 'var(--color-primary)' }}>Acceso Administrador:</strong><br />
-              Email: <code>admin@oscarsoft.com.ar</code> | Contraseña: <code>Admin1234!</code>
-            </div>
           </form>
         ) : (
-          /* FORMULARIO REGISTRO */
-          <form onSubmit={handleRegister}>
+          /* FORMULARIO REGISTRO PACIENTE */
+          <form onSubmit={handleRegisterPaciente}>
             <div className="grid grid-cols-2 gap-3">
               <div className="form-group">
-                <label className="form-label">Nombre</label>
+                <label className="form-label">Nombre <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                 <input
                   type="text"
                   className="form-input"
@@ -246,7 +334,7 @@ export default function LoginPage({ onLoginSuccess }) {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Apellido</label>
+                <label className="form-label">Apellido <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                 <input
                   type="text"
                   className="form-input"
@@ -259,7 +347,7 @@ export default function LoginPage({ onLoginSuccess }) {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="form-group">
-                <label className="form-label">DNI</label>
+                <label className="form-label">DNI <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                 <input
                   type="text"
                   className="form-input"
@@ -270,10 +358,11 @@ export default function LoginPage({ onLoginSuccess }) {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Teléfono</label>
+                <label className="form-label">Teléfono / WhatsApp <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                 <input
                   type="tel"
                   className="form-input"
+                  required
                   placeholder="Ej: 2944123456"
                   value={regForm.telefono}
                   onChange={(e) => setRegForm({ ...regForm, telefono: e.target.value })}
@@ -282,7 +371,7 @@ export default function LoginPage({ onLoginSuccess }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Correo Electrónico</label>
+              <label className="form-label">Correo Electrónico <span style={{ color: 'var(--color-danger)' }}>*</span></label>
               <input
                 type="email"
                 className="form-input"
@@ -293,7 +382,7 @@ export default function LoginPage({ onLoginSuccess }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Contraseña</label>
+              <label className="form-label">Contraseña <span style={{ color: 'var(--color-danger)' }}>*</span></label>
               <input
                 type="password"
                 className="form-input"

@@ -22,7 +22,12 @@ import {
   Edit,
   Eye,
   X,
-  Sparkles
+  Sparkles,
+  Stethoscope,
+  Copy,
+  ExternalLink,
+  DollarSign,
+  MessageSquare
 } from 'lucide-react';
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'];
@@ -128,6 +133,23 @@ export default function DashboardPage() {
   const [savingDoctorCoberturas, setSavingDoctorCoberturas] = useState(false);
   const [coberturasSearch, setCoberturasSearch] = useState('');
 
+  // Bot WhatsApp Q&A Tab
+  const [botRespuestas, setBotRespuestas] = useState([]);
+  const [botLoading, setBotLoading] = useState(false);
+  const [botSearch, setBotSearch] = useState('');
+  const [botFiltroActivo, setBotFiltroActivo] = useState('todos');
+  const [showBotModal, setShowBotModal] = useState(false);
+  const [editingBotId, setEditingBotId] = useState(null);
+  const [botForm, setBotForm] = useState({
+    clave: '',
+    titulo: '',
+    descripcion: '',
+    disparador: '',
+    mensaje: '',
+    activo: 1
+  });
+  const [botSaving, setBotSaving] = useState(false);
+
   // Feedback Toast
   const [toastMsg, setToastMsg] = useState('');
 
@@ -136,35 +158,60 @@ export default function DashboardPage() {
     setTimeout(() => setToastMsg(''), 4000);
   };
 
+  const isDoctor = user?.rol === 'medico';
+
   const fetchStats = () => {
-    api.get('/admin/stats').then(res => setStats(res.data)).catch(console.error);
+    if (isDoctor) {
+      api.get('/medico/stats')
+        .then(res => setStats(res.data?.data || res.data))
+        .catch(console.error);
+    } else {
+      api.get('/admin/stats').then(res => setStats(res.data)).catch(console.error);
+    }
   };
 
   const fetchTurnos = () => {
     const params = new URLSearchParams();
     if (filtroFecha) params.append('fecha', filtroFecha);
-    if (filtroMedico) params.append('medico_id', filtroMedico);
+    if (isDoctor) {
+      params.append('medico_id', user.id);
+    } else if (filtroMedico) {
+      params.append('medico_id', filtroMedico);
+    }
     if (filtroSede) params.append('unidad_id', filtroSede);
     if (filtroEstado) params.append('estado', filtroEstado);
     if (filtroSearch) params.append('q', filtroSearch);
 
-    api.get(`/admin/turnos?${params.toString()}`)
-      .then(res => setTurnos(res.data || []))
-      .catch(console.error);
+    if (isDoctor) {
+      api.get(`/medico/agenda?${params.toString()}`)
+        .then(res => setTurnos(res.data?.data || []))
+        .catch(console.error);
+    } else {
+      api.get(`/admin/turnos?${params.toString()}`)
+        .then(res => setTurnos(res.data || []))
+        .catch(console.error);
+    }
   };
 
   const fetchMedicos = () => {
+    if (isDoctor) {
+      setMedicos([user]);
+      return;
+    }
     api.get('/admin/medicos')
       .then(res => setMedicos(res.data || []))
       .catch(console.error);
   };
 
   const fetchCatalogos = () => {
-    api.get('/admin/especialidades').then(res => setEspecialidades(res.data || [])).catch(console.error);
+    api.get('/public/especialidades').then(res => setEspecialidades(res.data || [])).catch(() => {
+      api.get('/admin/especialidades').then(res => setEspecialidades(res.data || [])).catch(console.error);
+    });
     api.get('/admin/unidades').then(res => setSedes(res.data || [])).catch(console.error);
   };
 
   const fetchUsuarios = () => {
+    if (isDoctor) return;
     const params = new URLSearchParams();
     if (usuarioSearch) params.append('q', usuarioSearch);
     if (rolFiltro) params.append('rol', rolFiltro);
@@ -172,6 +219,12 @@ export default function DashboardPage() {
   };
 
   const fetchObrasSociales = () => {
+    if (isDoctor) {
+      api.get('/public/obras-sociales')
+        .then(res => setCoberturasAllObras(res.data || []))
+        .catch(console.error);
+      return;
+    }
     setAdminObrasLoading(true);
     const params = adminObrasSearch ? `?q=${encodeURIComponent(adminObrasSearch)}` : '';
     api.get(`/admin/obras-sociales${params}`)
@@ -184,6 +237,7 @@ export default function DashboardPage() {
   };
 
   const fetchConfig = () => {
+    if (isDoctor) return;
     api.get('/admin/config')
       .then(res => {
         if (res.data && res.data.meses_agenda) {
@@ -198,16 +252,64 @@ export default function DashboardPage() {
     fetchTurnos();
     fetchMedicos();
     fetchCatalogos();
-    fetchConfig();
-    fetchObrasSociales();
-  }, []);
+    if (!isDoctor) {
+      fetchConfig();
+      fetchObrasSociales();
+    } else {
+      // Cargar ficha y honorarios del médico
+      api.get('/medico/perfil')
+        .then(res => {
+          if (res.data?.data) {
+            const m = res.data.data;
+            setFichaForm({
+              nombre: m.nombre || '',
+              apellido: m.apellido || '',
+              email: m.email || '',
+              matricula: m.matricula || '',
+              telefono: m.telefono || '',
+              biografia: m.biografia || '',
+              direccion: m.direccion || '',
+              acepta_particular: m.acepta_particular !== 0 && m.acepta_particular !== false,
+              honorarios_particular: m.honorarios_particular !== null && m.honorarios_particular !== undefined ? m.honorarios_particular : '',
+              mostrar_honorarios: !!m.mostrar_honorarios,
+              dias_antelacion_agenda: m.dias_antelacion_agenda !== null && m.dias_antelacion_agenda !== undefined ? m.dias_antelacion_agenda : '',
+              dia_apertura_agenda: m.dia_apertura_agenda || ''
+            });
+          }
+        })
+        .catch(console.error);
+
+      // Cargar horarios del médico
+      api.get('/medico/horarios')
+        .then(res => {
+          if (res.data?.data) setHorariosBloques(res.data.data);
+        })
+        .catch(console.error);
+
+      // Cargar todas las obras sociales y las seleccionadas por este médico
+      api.get('/public/obras-sociales')
+        .then(res => setCoberturasAllObras(res.data || []))
+        .catch(console.error);
+
+      api.get('/medico/coberturas')
+        .then(res => {
+          if (res.data?.data) {
+            setSelectedOSIds(new Set((res.data.data.obras_sociales || []).map(Number)));
+            setSelectedPlanIds(new Set((res.data.data.planes || []).map(Number)));
+          }
+        })
+        .catch(console.error);
+    }
+  }, [isDoctor]);
 
   useEffect(() => {
     fetchTurnos();
   }, [filtroFecha, filtroMedico, filtroSede, filtroEstado, filtroSearch]);
 
   useEffect(() => {
-    fetchUsuarios();
+    if (!isDoctor) {
+      fetchUsuarios();
+    }
   }, [usuarioSearch, rolFiltro]);
 
   useEffect(() => {
@@ -339,12 +441,57 @@ export default function DashboardPage() {
 
   const handleUpdateEstadoTurno = async (turnoId, nuevoEstado) => {
     try {
-      await api.put(`/admin/turnos/${turnoId}/estado`, { estado: nuevoEstado });
+      if (isDoctor) {
+        await api.put(`/medico/turnos/${turnoId}/estado`, { estado: nuevoEstado });
+      } else {
+        await api.put(`/admin/turnos/${turnoId}/estado`, { estado: nuevoEstado });
+      }
       showToast(`Turno actualizado a "${nuevoEstado}".`);
       fetchTurnos();
       fetchStats();
     } catch (err) {
       alert(err.message || 'Error al actualizar turno.');
+    }
+  };
+
+  const handleSaveDoctorPersonalFicha = async (e) => {
+    e.preventDefault();
+    setSavingFicha(true);
+    try {
+      await api.put('/medico/perfil', fichaForm);
+      showToast('Tu ficha profesional y honorarios fueron actualizados correctamente.');
+      fetchStats();
+    } catch (err) {
+      showToast(err.message || 'Error al guardar tu perfil.');
+    } finally {
+      setSavingFicha(false);
+    }
+  };
+
+  const handleSaveDoctorPersonalHorarios = async () => {
+    setSavingHorarios(true);
+    try {
+      await api.put('/medico/horarios', { bloques: horariosBloques });
+      showToast('Tus horarios de atención fueron guardados correctamente.');
+    } catch (err) {
+      showToast(err.message || 'Error al guardar horarios.');
+    } finally {
+      setSavingHorarios(false);
+    }
+  };
+
+  const handleSaveDoctorPersonalCoberturas = async () => {
+    setSavingDoctorCoberturas(true);
+    try {
+      await api.put('/medico/coberturas', {
+        obras_sociales: Array.from(selectedOSIds),
+        planes: Array.from(selectedPlanIds)
+      });
+      showToast('Tus coberturas médicas fueron guardadas correctamente.');
+    } catch (err) {
+      showToast(err.message || 'Error al guardar coberturas.');
+    } finally {
+      setSavingDoctorCoberturas(false);
     }
   };
 
@@ -439,6 +586,8 @@ export default function DashboardPage() {
       nombre: medico.nombre || '',
       apellido: medico.apellido || '',
       email: medico.email || '',
+      dni: medico.dni || '',
+      password: '',
       matricula: medico.matricula || '',
       telefono: medico.telefono || '',
       biografia: medico.biografia || '',
@@ -460,6 +609,8 @@ export default function DashboardPage() {
         nombre: fichaForm.nombre,
         apellido: fichaForm.apellido,
         email: fichaForm.email,
+        dni: fichaForm.dni || null,
+        password: fichaForm.password?.trim() ? fichaForm.password.trim() : undefined,
         matricula: fichaForm.matricula,
         telefono: fichaForm.telefono,
         biografia: fichaForm.biografia,
@@ -470,7 +621,7 @@ export default function DashboardPage() {
         dias_antelacion_agenda: fichaForm.dias_antelacion_agenda !== '' && !isNaN(parseInt(fichaForm.dias_antelacion_agenda, 10)) ? parseInt(fichaForm.dias_antelacion_agenda, 10) : null,
         dia_apertura_agenda: fichaForm.dia_apertura_agenda !== '' && !isNaN(parseInt(fichaForm.dia_apertura_agenda, 10)) ? parseInt(fichaForm.dia_apertura_agenda, 10) : null
       });
-      showToast('Ficha del profesional y honorarios actualizados correctamente.');
+      showToast('Ficha del profesional, credenciales y honorarios actualizados correctamente.');
       setEditingFichaMedico(null);
       fetchMedicos();
     } catch (err) {
@@ -516,18 +667,210 @@ export default function DashboardPage() {
     }
   };
 
+  useEffect(() => {
+    if (activeTab === 'bot' && !isDoctor) {
+      fetchBotRespuestas();
+    }
+  }, [activeTab]);
+
+  const fetchBotRespuestas = async () => {
+    setBotLoading(true);
+    try {
+      const res = await api.get('/admin/bot-respuestas');
+      setBotRespuestas(res.data?.data || []);
+    } catch (err) {
+      console.error('Error al cargar respuestas del bot:', err);
+      showToast('Error al cargar mensajes del bot');
+    } finally {
+      setBotLoading(false);
+    }
+  };
+
+  const handleOpenNewBotModal = () => {
+    setEditingBotId(null);
+    setBotForm({
+      clave: '',
+      titulo: '',
+      descripcion: '',
+      disparador: '',
+      mensaje: '',
+      activo: 1
+    });
+    setShowBotModal(true);
+  };
+
+  const handleOpenEditBotModal = (item) => {
+    setEditingBotId(item.id);
+    setBotForm({
+      clave: item.clave || '',
+      titulo: item.titulo || '',
+      descripcion: item.descripcion || '',
+      disparador: item.disparador || '',
+      mensaje: item.mensaje || '',
+      activo: item.activo ? 1 : 0
+    });
+    setShowBotModal(true);
+  };
+
+  const handleSaveBotRespuesta = async (e) => {
+    e.preventDefault();
+    if (!botForm.clave.trim() || !botForm.titulo.trim() || !botForm.mensaje.trim()) {
+      showToast('Clave, título y mensaje son obligatorios.');
+      return;
+    }
+    setBotSaving(true);
+    try {
+      if (editingBotId) {
+        await api.put(`/admin/bot-respuestas/${editingBotId}`, botForm);
+        showToast('Respuesta del bot actualizada exitosamente.');
+      } else {
+        await api.post('/admin/bot-respuestas', botForm);
+        showToast('Respuesta del bot creada exitosamente.');
+      }
+      setShowBotModal(false);
+      fetchBotRespuestas();
+    } catch (err) {
+      showToast(err.response?.data?.message || err.message || 'Error al guardar respuesta');
+    } finally {
+      setBotSaving(false);
+    }
+  };
+
+  const handleToggleBotActivo = async (item) => {
+    try {
+      const nuevoActivo = item.activo ? 0 : 1;
+      await api.put(`/admin/bot-respuestas/${item.id}`, {
+        ...item,
+        activo: nuevoActivo
+      });
+      setBotRespuestas(prev => prev.map(r => r.id === item.id ? { ...r, activo: nuevoActivo } : r));
+      showToast(nuevoActivo ? 'Respuesta activada.' : 'Respuesta pausada.');
+    } catch (err) {
+      showToast(err.message || 'Error al cambiar estado');
+    }
+  };
+
+  const handleDeleteBotRespuesta = async (id, titulo) => {
+    if (!window.confirm(`¿Estás seguro de eliminar "${titulo}"?`)) return;
+    try {
+      await api.delete(`/admin/bot-respuestas/${id}`);
+      showToast('Mensaje eliminado correctamente.');
+      fetchBotRespuestas();
+    } catch (err) {
+      showToast(err.message || 'Error al eliminar');
+    }
+  };
+
+  const filteredBotList = botRespuestas.filter(item => {
+    if (botFiltroActivo === 'activos' && !item.activo) return false;
+    if (botFiltroActivo === 'inactivos' && item.activo) return false;
+    if (botSearch.trim()) {
+      const q = botSearch.toLowerCase();
+      const matchClave = item.clave?.toLowerCase().includes(q);
+      const matchTitulo = item.titulo?.toLowerCase().includes(q);
+      const matchDisparador = item.disparador?.toLowerCase().includes(q);
+      const matchMensaje = item.mensaje?.toLowerCase().includes(q);
+      return matchClave || matchTitulo || matchDisparador || matchMensaje;
+    }
+    return true;
+  });
+
   return (
     <div className="container animate-fade-in" style={{ padding: '32px 24px 80px' }}>
       
       {/* Header */}
       <div className="flex items-center justify-between" style={{ marginBottom: '24px' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Panel de Control Clínico</h1>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>
+            {isDoctor ? 'Portal Profesional Médico' : 'Panel de Control Clínico'}
+          </h1>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9375rem' }}>
-            Gestión completa de agendas, profesionales, coberturas y pacientes
+            {isDoctor 
+              ? 'Gestión exclusiva de tu agenda médica, pacientes y honorarios particulares' 
+              : 'Gestión completa de agendas, profesionales, coberturas y pacientes'}
           </p>
         </div>
       </div>
+
+      {/* Banner de Enlace Personal para Médicos */}
+      {isDoctor && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.08), rgba(5, 150, 105, 0.08))',
+          border: '1px solid rgba(2, 132, 199, 0.25)',
+          borderRadius: '16px',
+          padding: '20px 24px',
+          marginBottom: '28px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '16px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, var(--color-primary), #059669)',
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 800,
+              fontSize: '1.25rem',
+              boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
+            }}>
+              {user.nombre?.[0] || 'D'}{user.apellido?.[0] || 'R'}
+            </div>
+            <div>
+              <h2 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0, color: 'var(--color-text-main)' }}>
+                Dr/a. {user.nombre} {user.apellido}
+              </h2>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
+                <span className="badge badge-success">
+                  <Stethoscope size={12} /> Médico Profesional
+                </span>
+                {user.matricula && (
+                  <span className="badge badge-neutral">
+                    Matrícula: {user.matricula}
+                  </span>
+                )}
+                {user.slug && (
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                    Enlace de turnos: <strong style={{ color: 'var(--color-primary)' }}>oscarsoft.com.ar/turnos/{user.slug}</strong>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                const url = `${window.location.origin}/turnos/${user.slug || ''}`;
+                navigator.clipboard.writeText(url);
+                showToast('¡Enlace de turnos copiado al portapapeles!');
+              }}
+              title="Copiar enlace para tus pacientes"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Copy size={15} /> Copiar mi Enlace
+            </button>
+            {user.slug && (
+              <a
+                href={`/turnos/${user.slug}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-secondary btn-sm"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <ExternalLink size={15} /> Ver Ficha Pública
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       {toastMsg && (
         <div className="toast">
@@ -560,22 +903,26 @@ export default function DashboardPage() {
           </div>
 
           <div className="card" style={{ padding: '20px' }}>
-            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Médicos Activos</div>
+            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>
+              {isDoctor ? 'Turnos Futuros' : 'Médicos Activos'}
+            </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '4px' }}>
-              {stats.totales?.total_medicos || 0}
+              {isDoctor ? (stats.totales?.turnos_futuros || 0) : (stats.totales?.total_medicos || 0)}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '4px' }}>
-              En plantilla oficial
+              {isDoctor ? 'Agendados en adelante' : 'En plantilla oficial'}
             </div>
           </div>
 
           <div className="card" style={{ padding: '20px' }}>
-            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Pacientes Registrados</div>
+            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>
+              {isDoctor ? 'Pacientes Atendidos' : 'Pacientes Registrados'}
+            </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '4px' }}>
-              {stats.totales?.total_pacientes || 0}
+              {isDoctor ? (stats.totales?.total_pacientes || 0) : (stats.totales?.total_pacientes || 0)}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '4px' }}>
-              Turnos futuros: {stats.totales?.turnos_futuros || 0}
+              {isDoctor ? 'Historial de pacientes' : `Turnos futuros: ${stats.totales?.turnos_futuros || 0}`}
             </div>
           </div>
         </div>
@@ -583,7 +930,13 @@ export default function DashboardPage() {
 
       {/* Tabs */}
       <div className="flex gap-2" style={{ borderBottom: '1px solid var(--color-border)', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px' }}>
-        {[
+        {(isDoctor ? [
+          { id: 'turnos', label: 'Mi Agenda y Turnos', icon: Calendar },
+          { id: 'ficha', label: 'Mi Ficha & Honorarios', icon: Sparkles },
+          { id: 'horarios', label: 'Mis Horarios de Atención', icon: Clock },
+          { id: 'coberturas', label: 'Mis Obras Sociales y Coberturas', icon: CreditCard },
+          { id: 'link', label: 'Mi Enlace Directo', icon: Eye }
+        ] : [
           { id: 'turnos', label: 'Agenda & Turnos', icon: Calendar, minRole: 'recepcionista' },
           { id: 'medicos', label: 'Médicos & Staff', icon: Users, minRole: 'recepcionista' },
           { id: 'usuarios', label: 'Pacientes & Usuarios', icon: ShieldCheck, minRole: 'recepcionista' },
@@ -591,8 +944,10 @@ export default function DashboardPage() {
           { id: 'horarios', label: 'Configurador de Horarios', icon: Clock, minRole: 'admin' },
           { id: 'reglas', label: 'Reglas de Agenda', icon: Settings, minRole: 'admin' },
           { id: 'especialidades', label: 'Especialidades', icon: Award, minRole: 'admin' },
-          { id: 'sedes', label: 'Sedes y Consultorios', icon: Building2, minRole: 'admin' }
-        ].filter(tab => {
+          { id: 'sedes', label: 'Sedes y Consultorios', icon: Building2, minRole: 'admin' },
+          { id: 'bot', label: 'Bot WhatsApp (Q&A)', icon: MessageSquare, minRole: 'admin' }
+        ]).filter(tab => {
+          if (isDoctor) return true;
           const isUserAdmin = ['superadmin', 'admin'].includes(user?.rol) || (user?.email && ['oscarns@gmail.com', 'admin@oscarsoft.com.ar'].includes(user.email.toLowerCase()));
           if (tab.minRole === 'admin') return isUserAdmin;
           return true;
@@ -635,16 +990,27 @@ export default function DashboardPage() {
             </div>
 
             {/* Select2 Profesional */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Profesional</label>
-              <SearchableSelect
-                options={medicos.map(m => ({ id: m.id, label: `Dr. ${m.nombre} ${m.apellido}` }))}
-                value={filtroMedico}
-                onChange={setFiltroMedico}
-                placeholder="Todos los médicos"
-                searchPlaceholder="Buscar médico..."
-              />
-            </div>
+            {isDoctor ? (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Profesional</label>
+                <div className="form-input" style={{ background: 'var(--color-bg)', display: 'flex', alignItems: 'center' }}>
+                  <span className="badge badge-success" style={{ margin: 0 }}>
+                    <Stethoscope size={12} /> Dr/a. {user.nombre} {user.apellido}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Profesional</label>
+                <SearchableSelect
+                  options={medicos.map(m => ({ id: m.id, label: `Dr. ${m.nombre} ${m.apellido}` }))}
+                  value={filtroMedico}
+                  onChange={setFiltroMedico}
+                  placeholder="Todos los médicos"
+                  searchPlaceholder="Buscar médico..."
+                />
+              </div>
+            )}
 
             {/* Select2 Centro / Sede */}
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -699,7 +1065,7 @@ export default function DashboardPage() {
                     <th style={{ padding: '12px 14px' }}>Hora</th>
                     <th style={{ padding: '12px 14px' }}>Paciente</th>
                     <th style={{ padding: '12px 14px' }}>DNI / Contacto</th>
-                    <th style={{ padding: '12px 14px' }}>Profesional</th>
+                    {!isDoctor && <th style={{ padding: '12px 14px' }}>Profesional</th>}
                     <th style={{ padding: '12px 14px' }}>Cobertura</th>
                     <th style={{ padding: '12px 14px' }}>Estado</th>
                     <th style={{ padding: '12px 14px', textAlign: 'right' }}>Acciones Rápidas</th>
@@ -722,9 +1088,11 @@ export default function DashboardPage() {
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        Dr. {t.medico_nombre} {t.medico_apellido}
-                      </td>
+                      {!isDoctor && (
+                        <td style={{ padding: '12px 14px' }}>
+                          Dr. {t.medico_nombre} {t.medico_apellido}
+                        </td>
+                      )}
                       <td style={{ padding: '12px 14px' }}>
                         {t.obra_social_nombre || 'Particular'}
                       </td>
@@ -781,8 +1149,355 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* TAB 2: MÉDICOS Y STAFF (con foto redonda) */}
-      {activeTab === 'medicos' && (
+      {/* VISTA DOCTOR: MI PERFIL & HONORARIOS */}
+      {isDoctor && activeTab === 'ficha' && (
+        <div className="card" style={{ padding: '28px', maxWidth: '800px', margin: '0 auto' }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--color-border)' }}>
+            <div>
+              <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0, color: 'var(--color-text-main)' }}>
+                Mi Perfil Profesional & Honorarios
+              </h3>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: '4px 0 0' }}>
+                Configurá tu información de contacto, matrícula y atención particular
+              </p>
+            </div>
+            <span className="badge badge-primary">
+              <Sparkles size={14} /> Ficha Oficial
+            </span>
+          </div>
+
+          <form onSubmit={handleSaveDoctorPersonalFicha}>
+            <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '16px' }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Nombre</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={fichaForm.nombre}
+                  disabled
+                  style={{ background: 'var(--color-bg)', opacity: 0.85 }}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Apellido</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={fichaForm.apellido}
+                  disabled
+                  style={{ background: 'var(--color-bg)', opacity: 0.85 }}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '16px' }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Matrícula Profesional (M.P. / M.N.)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Ej: MP 14590"
+                  value={fichaForm.matricula}
+                  onChange={e => setFichaForm({ ...fichaForm, matricula: e.target.value })}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Teléfono / WhatsApp de Contacto</label>
+                <input
+                  type="tel"
+                  className="form-input"
+                  placeholder="Ej: 2944123456"
+                  value={fichaForm.telefono}
+                  onChange={e => setFichaForm({ ...fichaForm, telefono: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '16px' }}>
+              <label className="form-label">Dirección / Consultorio de Atención</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Ej: Av. San Martín 450, Consultorio 3"
+                value={fichaForm.direccion}
+                onChange={e => setFichaForm({ ...fichaForm, direccion: e.target.value })}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+              <label className="form-label">Presentación / Biografía Profesional</label>
+              <textarea
+                className="form-input"
+                rows="3"
+                placeholder="Breve descripción de tu trayectoria, especialidad o enfoque de atención..."
+                value={fichaForm.biografia}
+                onChange={e => setFichaForm({ ...fichaForm, biografia: e.target.value })}
+              />
+            </div>
+
+            {/* SECCIÓN ATENCIÓN PARTICULAR Y HONORARIOS */}
+            <div style={{
+              margin: '20px 0',
+              padding: '20px',
+              borderRadius: '12px',
+              background: 'rgba(2, 132, 199, 0.05)',
+              border: '1px solid rgba(2, 132, 199, 0.2)'
+            }}>
+              <h4 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <DollarSign size={18} /> Atención Particular & Honorarios
+              </h4>
+
+              <label className="flex items-center gap-2" style={{ cursor: 'pointer', marginBottom: '12px', fontSize: '0.875rem', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={fichaForm.acepta_particular}
+                  onChange={e => setFichaForm({ ...fichaForm, acepta_particular: e.target.checked })}
+                />
+                <span>Acepto pacientes de forma <strong>Particular (Privado)</strong></span>
+              </label>
+
+              {fichaForm.acepta_particular && (
+                <div style={{ paddingLeft: '12px', borderLeft: '2px solid var(--color-primary-light)' }}>
+                  <div className="form-group" style={{ marginBottom: '12px', maxWidth: '320px' }}>
+                    <label className="form-label">Valor de los Honorarios de Consulta Particular ($)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      className="form-input"
+                      placeholder="Ej: 25000"
+                      value={fichaForm.honorarios_particular}
+                      onChange={e => setFichaForm({ ...fichaForm, honorarios_particular: e.target.value })}
+                    />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      Si dejas este campo vacío, la reserva aparecerá solo como "Particular".
+                    </span>
+                  </div>
+
+                  <label className="flex items-center gap-2" style={{ cursor: 'pointer', fontSize: '0.8125rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={fichaForm.mostrar_honorarios}
+                      onChange={e => setFichaForm({ ...fichaForm, mostrar_honorarios: e.target.checked })}
+                    />
+                    <span>Mostrar el valor de mis honorarios a los pacientes en el formulario de reserva</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Reglas de antelación */}
+            <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '24px' }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Antelación de Agenda (Días hacia adelante)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="180"
+                  className="form-input"
+                  placeholder="Por defecto: 60 días"
+                  value={fichaForm.dias_antelacion_agenda}
+                  onChange={e => setFichaForm({ ...fichaForm, dias_antelacion_agenda: e.target.value })}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Día del Mes en que abre la Agenda (Opcional)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  className="form-input"
+                  placeholder="Ej: 20 (Día 20 del mes)"
+                  value={fichaForm.dia_apertura_agenda}
+                  onChange={e => setFichaForm({ ...fichaForm, dia_apertura_agenda: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={savingFicha}
+                style={{ padding: '10px 24px', fontWeight: 700 }}
+              >
+                {savingFicha ? 'Guardando...' : 'Guardar Mi Perfil y Honorarios'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* VISTA DOCTOR: MIS COBERTURAS Y OBRAS SOCIALES */}
+      {isDoctor && activeTab === 'coberturas' && (
+        <div className="card" style={{ padding: '28px' }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--color-border)', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0, color: 'var(--color-text-main)' }}>
+                Mis Obras Sociales y Coberturas Médicas
+              </h3>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: '4px 0 0' }}>
+                Habilitá o deshabilitá las obras sociales y prepagas con las que trabajás
+              </p>
+            </div>
+            <button
+              className="btn btn-primary"
+              disabled={savingDoctorCoberturas}
+              onClick={handleSaveDoctorPersonalCoberturas}
+            >
+              {savingDoctorCoberturas ? 'Guardando...' : 'Guardar Mis Coberturas'}
+            </button>
+          </div>
+
+          <div style={{ marginBottom: '20px', maxWidth: '360px' }}>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Filtrar obra social..."
+              value={coberturasSearch}
+              onChange={e => setCoberturasSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {coberturasAllObras
+              .filter(o => o.nombre.toLowerCase().includes(coberturasSearch.toLowerCase()))
+              .map(o => {
+                const isChecked = selectedOSIds.has(Number(o.id));
+                return (
+                  <div
+                    key={o.id}
+                    className="card"
+                    style={{
+                      padding: '16px',
+                      background: isChecked ? 'rgba(2, 132, 199, 0.05)' : 'var(--color-bg)',
+                      border: isChecked ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => {
+                      const next = new Set(selectedOSIds);
+                      if (next.has(Number(o.id))) {
+                        next.delete(Number(o.id));
+                      } else {
+                        next.add(Number(o.id));
+                      }
+                      setSelectedOSIds(next);
+                    }}
+                  >
+                    <label className="flex items-center gap-3" style={{ cursor: 'pointer', margin: 0, width: '100%' }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {}} // controlado por el card onClick
+                      />
+                      <span style={{ fontWeight: isChecked ? 700 : 500, fontSize: '0.9375rem' }}>
+                        {o.nombre}
+                      </span>
+                    </label>
+                  </div>
+                );
+              })}
+          </div>
+
+          <div className="flex justify-end" style={{ marginTop: '24px' }}>
+            <button
+              className="btn btn-primary"
+              disabled={savingDoctorCoberturas}
+              onClick={handleSaveDoctorPersonalCoberturas}
+            >
+              {savingDoctorCoberturas ? 'Guardando...' : 'Guardar Mis Coberturas'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* VISTA DOCTOR: MI ENLACE DIRECTO */}
+      {isDoctor && activeTab === 'link' && (
+        <div className="card" style={{ padding: '32px', maxWidth: '720px', margin: '0 auto', textAlign: 'center' }}>
+          <div style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, var(--color-primary), #059669)',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px',
+            boxShadow: '0 8px 24px rgba(2, 132, 199, 0.25)'
+          }}>
+            <ExternalLink size={30} />
+          </div>
+
+          <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '8px' }}>
+            Tu Enlace Personal de Turnos Médicos
+          </h3>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9375rem', marginBottom: '24px' }}>
+            Tus pacientes pueden ingresar a este link para reservar turnos directamente con vos, consultar tus horarios y conocer tus honorarios o coberturas aceptadas.
+          </p>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'var(--color-bg)',
+            padding: '12px 16px',
+            borderRadius: '12px',
+            border: '1px solid var(--color-border)',
+            marginBottom: '24px'
+          }}>
+            <input
+              type="text"
+              readOnly
+              className="form-input"
+              style={{ border: 'none', background: 'transparent', fontWeight: 600, color: 'var(--color-primary)', fontSize: '0.95rem' }}
+              value={`${window.location.origin}/turnos/${user.slug || 'bocianjorge'}`}
+            />
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                const url = `${window.location.origin}/turnos/${user.slug || 'bocianjorge'}`;
+                navigator.clipboard.writeText(url);
+                showToast('¡Enlace copiado al portapapeles!');
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+            >
+              <Copy size={16} /> Copiar Enlace
+            </button>
+          </div>
+
+          <div className="flex justify-center gap-3">
+            <a
+              href={`/turnos/${user.slug || 'bocianjorge'}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              <Eye size={16} /> Ver mi Ficha de Reserva
+            </a>
+          </div>
+
+          <div style={{
+            marginTop: '32px',
+            padding: '16px',
+            borderRadius: '12px',
+            background: 'rgba(2, 132, 199, 0.04)',
+            border: '1px dashed rgba(2, 132, 199, 0.25)',
+            textAlign: 'left',
+            fontSize: '0.8125rem',
+            color: 'var(--color-text-muted)'
+          }}>
+            <strong style={{ color: 'var(--color-text-main)', display: 'block', marginBottom: '4px' }}>
+              💡 Sugerencia para tus pacientes:
+            </strong>
+            Podés agregar este enlace en tu perfil de Instagram, en tu estado o mensaje de bienvenida de WhatsApp Business, o en tu tarjeta personal para que tus pacientes se autogestionen el turno en cualquier horario sin demoras telefónicas.
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: MÉDICOS Y STAFF (ADMIN ONLY) */}
+      {!isDoctor && activeTab === 'medicos' && (
         <div className="card" style={{ padding: '24px' }}>
           <div className="flex items-center justify-between" style={{ marginBottom: '20px' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Plantilla de Profesionales</h3>
@@ -1605,6 +2320,244 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* TAB 8: BOT WHATSAPP PREGUNTAS Y RESPUESTAS */}
+      {activeTab === 'bot' && (
+        <div className="card" style={{ padding: '24px' }}>
+          {/* Header de la Sección */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4" style={{ marginBottom: '24px' }}>
+            <div>
+              <div className="flex items-center gap-2">
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: 'rgba(37, 211, 102, 0.15)',
+                  color: '#128C7E',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <MessageSquare size={20} />
+                </div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
+                  Bot WhatsApp: Preguntas, Respuestas & Disparadores
+                </h3>
+              </div>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: '6px', marginBottom: 0 }}>
+                Administrá las plantillas de mensajes del flujo interactivo y configurá respuestas automáticas personalizadas activadas por palabras clave.
+              </p>
+            </div>
+
+            <button
+              onClick={handleOpenNewBotModal}
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}
+            >
+              <Plus size={18} /> Nueva Respuesta / Pregunta
+            </button>
+          </div>
+
+          {/* Filtros y Buscador */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3" style={{ marginBottom: '20px' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '420px' }}>
+              <Search
+                size={18}
+                style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--color-text-muted)',
+                  pointerEvents: 'none'
+                }}
+              />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Buscar por clave, título, palabras clave o texto..."
+                style={{ paddingLeft: '38px', width: '100%' }}
+                value={botSearch}
+                onChange={e => setBotSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <select
+                className="form-select"
+                style={{ fontSize: '0.875rem' }}
+                value={botFiltroActivo}
+                onChange={e => setBotFiltroActivo(e.target.value)}
+              >
+                <option value="todos">Todos los estados</option>
+                <option value="activos">Solo Activos</option>
+                <option value="inactivos">Solo Inactivos</option>
+              </select>
+
+              <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                Total: <strong>{botRespuestas.length}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Mensaje Informativo o Tip */}
+          <div style={{
+            background: 'rgba(37, 211, 102, 0.08)',
+            border: '1px solid rgba(37, 211, 102, 0.3)',
+            borderRadius: '10px',
+            padding: '12px 16px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontSize: '0.875rem'
+          }}>
+            <Sparkles size={20} style={{ color: '#128C7E', flexShrink: 0 }} />
+            <div>
+              <strong>¿Cómo funciona?</strong> Si definís <em>Palabras Disparadoras</em> (ej: <code>estacionamiento, auto, cochera</code>), cuando un paciente escriba esa palabra en WhatsApp, el bot le responderá automáticamente este mensaje. Además, podés personalizar los textos oficiales del sistema (ej: <code>menu_principal</code>, <code>sedes_info</code>, <code>solicitar_dni</code>).
+            </div>
+          </div>
+
+          {/* Tabla de Preguntas y Respuestas */}
+          {botLoading ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-muted)' }}>
+              Cargando respuestas del bot...
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--color-border)', textAlign: 'left', color: 'var(--color-text-muted)' }}>
+                    <th style={{ padding: '12px 14px', width: '220px' }}>Clave & Título</th>
+                    <th style={{ padding: '12px 14px', width: '200px' }}>Disparadores (Keywords)</th>
+                    <th style={{ padding: '12px 14px' }}>Mensaje que envía el Bot</th>
+                    <th style={{ padding: '12px 14px', width: '100px', textAlign: 'center' }}>Estado</th>
+                    <th style={{ padding: '12px 14px', width: '110px', textAlign: 'right' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBotList.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '32px', color: 'var(--color-text-muted)' }}>
+                        No se encontraron respuestas o preguntas que coincidan con la búsqueda.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredBotList.map(item => (
+                      <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border)', verticalAlign: 'top' }}>
+                        <td style={{ padding: '14px 14px' }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--color-text)' }}>
+                            {item.titulo}
+                          </div>
+                          <div style={{ marginTop: '4px' }}>
+                            <code style={{
+                              fontSize: '0.75rem',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: 'var(--color-bg-secondary, rgba(0,0,0,0.06))',
+                              color: 'var(--color-primary)',
+                              fontFamily: 'monospace'
+                            }}>
+                              {item.clave}
+                            </code>
+                          </div>
+                          {item.descripcion && (
+                            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                              {item.descripcion}
+                            </div>
+                          )}
+                        </td>
+
+                        <td style={{ padding: '14px 14px' }}>
+                          {item.disparador ? (
+                            <div className="flex flex-wrap gap-1">
+                              {item.disparador.split(',').map((trig, idx) => (
+                                <span
+                                  key={idx}
+                                  className="badge"
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    background: 'rgba(37, 99, 235, 0.1)',
+                                    color: 'var(--color-primary)',
+                                    border: '1px solid rgba(37, 99, 235, 0.2)'
+                                  }}
+                                >
+                                  {trig.trim()}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                              ⚡ Flujo interno
+                            </span>
+                          )}
+                        </td>
+
+                        <td style={{ padding: '14px 14px' }}>
+                          <div style={{
+                            background: '#F0FDF4',
+                            border: '1px solid #BBF7D0',
+                            borderRadius: '8px',
+                            padding: '10px 14px',
+                            maxHeight: '130px',
+                            overflowY: 'auto',
+                            whiteSpace: 'pre-wrap',
+                            fontSize: '0.8125rem',
+                            color: '#14532D',
+                            lineHeight: '1.45',
+                            fontFamily: 'system-ui, -apple-system, sans-serif'
+                          }}>
+                            {item.mensaje}
+                          </div>
+                        </td>
+
+                        <td style={{ padding: '14px 14px', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBotActivo(item)}
+                            title="Hacer clic para activar o pausar"
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 0
+                            }}
+                          >
+                            <span className={`badge ${item.activo ? 'badge-success' : 'badge-secondary'}`} style={{ cursor: 'pointer' }}>
+                              {item.activo ? '● Activo' : '○ Pausado'}
+                            </span>
+                          </button>
+                        </td>
+
+                        <td style={{ padding: '14px 14px', textAlign: 'right' }}>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleOpenEditBotModal(item)}
+                              className="btn btn-sm btn-secondary"
+                              title="Editar respuesta"
+                              style={{ padding: '6px 8px' }}
+                            >
+                              <Edit size={15} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBotRespuesta(item.id, item.titulo)}
+                              className="btn btn-sm btn-danger"
+                              title="Eliminar respuesta"
+                              style={{ padding: '6px 8px' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* MODAL NUEVO MÉDICO (con Select2 para especialidad) */}
       {showMedicoModal && (
         <div className="modal-overlay">
@@ -1650,11 +2603,12 @@ export default function DashboardPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
-                  <label className="form-label">Email</label>
+                  <label className="form-label">Email / Usuario de Acceso <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                   <input
                     type="email"
                     className="form-input"
                     required
+                    placeholder="medico@clinica.com"
                     value={medicoForm.email}
                     onChange={e => setMedicoForm({ ...medicoForm, email: e.target.value })}
                   />
@@ -1673,16 +2627,17 @@ export default function DashboardPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
-                  <label className="form-label">DNI</label>
+                  <label className="form-label">DNI (Usuario alternativo para login)</label>
                   <input
                     type="text"
                     className="form-input"
+                    placeholder="Ej: 30123456"
                     value={medicoForm.dni}
                     onChange={e => setMedicoForm({ ...medicoForm, dni: e.target.value })}
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Contraseña de Acceso</label>
+                  <label className="form-label">Contraseña Asignada</label>
                   <input
                     type="password"
                     className="form-input"
@@ -2069,6 +3024,51 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              {/* SECCIÓN CREDENCIALES ADJUDICADAS POR ADMIN */}
+              <div style={{
+                padding: '12px',
+                background: 'rgba(2, 132, 199, 0.04)',
+                borderRadius: '8px',
+                border: '1px solid rgba(2, 132, 199, 0.2)',
+                marginBottom: '14px'
+              }}>
+                <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-primary)', marginBottom: '8px' }}>
+                  Credenciales de Acceso Adjudicadas
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Usuario / Email</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      required
+                      value={fichaForm.email}
+                      onChange={e => setFichaForm({ ...fichaForm, email: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>DNI (Login alternativo)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ej: 30123456"
+                      value={fichaForm.dni || ''}
+                      onChange={e => setFichaForm({ ...fichaForm, dni: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Nueva Contraseña</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder="Vacío = no cambia"
+                      value={fichaForm.password || ''}
+                      onChange={e => setFichaForm({ ...fichaForm, password: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* SECCIÓN ATENCIÓN PARTICULAR Y HONORARIOS */}
               <div style={{
                 margin: '18px 0',
@@ -2162,6 +3162,179 @@ export default function DashboardPage() {
                   disabled={savingFicha}
                 >
                   {savingFicha ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CREAR / EDITAR RESPUESTA DEL BOT */}
+      {showBotModal && (
+        <div className="modal-overlay">
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '640px', width: '92%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '16px', borderBottom: '1px solid var(--color-border)', paddingBottom: '12px' }}>
+              <div className="flex items-center gap-2">
+                <MessageSquare size={20} style={{ color: '#128C7E' }} />
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
+                  {editingBotId ? 'Editar Mensaje del Bot' : 'Nueva Respuesta / Pregunta del Bot'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => setShowBotModal(false)}
+                style={{ padding: '4px 8px' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBotRespuesta} className="flex flex-col gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">
+                    Clave Identificadora <span style={{ color: 'var(--color-danger)' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    required
+                    placeholder="ej: faq_estacionamiento"
+                    value={botForm.clave}
+                    onChange={e => setBotForm({ ...botForm, clave: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
+                  />
+                  <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                    Código único en minúsculas y sin espacios.
+                  </span>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">
+                    Título Descriptivo <span style={{ color: 'var(--color-danger)' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    required
+                    placeholder="ej: Información sobre Cocheras"
+                    value={botForm.titulo}
+                    onChange={e => setBotForm({ ...botForm, titulo: e.target.value })}
+                  />
+                  <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                    Nombre para identificarlo en el panel.
+                  </span>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">
+                  Palabras o Frases Disparadoras (Opcional)
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="ej: estacionamiento, auto, cochera, parquimetro"
+                  value={botForm.disparador}
+                  onChange={e => setBotForm({ ...botForm, disparador: e.target.value })}
+                />
+                <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                  Separadas por coma. Si el usuario escribe alguna de estas palabras, el bot responderá este mensaje.
+                </span>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">
+                  Descripción o Notas Internas (Opcional)
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="ej: Explicación de dónde dejar el vehículo en la sede centro"
+                  value={botForm.descripcion}
+                  onChange={e => setBotForm({ ...botForm, descripcion: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">
+                  Mensaje que Enviará el Bot <span style={{ color: 'var(--color-danger)' }}>*</span>
+                </label>
+                <textarea
+                  className="form-textarea"
+                  rows={6}
+                  required
+                  placeholder="Escribí aquí el texto que enviará el bot en WhatsApp... Podés usar saltos de línea y emojis."
+                  value={botForm.mensaje}
+                  onChange={e => setBotForm({ ...botForm, mensaje: e.target.value })}
+                  style={{ fontFamily: 'inherit', fontSize: '0.875rem' }}
+                />
+                <div className="flex justify-between" style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                  <span>Tip: Podés usar *negrita* o _cursiva_ como en WhatsApp.</span>
+                  <span>{botForm.mensaje.length} caracteres</span>
+                </div>
+              </div>
+
+              {/* Vista previa tipo WhatsApp */}
+              {botForm.mensaje && (
+                <div style={{ marginTop: '8px' }}>
+                  <label className="form-label" style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                    Vista Previa en WhatsApp:
+                  </label>
+                  <div style={{
+                    background: '#ECE5DD',
+                    padding: '14px',
+                    borderRadius: '10px',
+                    backgroundImage: 'radial-gradient(#d4cbc1 1px, transparent 1px)',
+                    backgroundSize: '16px 16px'
+                  }}>
+                    <div style={{
+                      background: '#FFFFFF',
+                      borderRadius: '8px 8px 8px 2px',
+                      padding: '10px 14px',
+                      maxWidth: '85%',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                      fontSize: '0.875rem',
+                      lineHeight: '1.45',
+                      whiteSpace: 'pre-wrap',
+                      color: '#111827'
+                    }}>
+                      {botForm.mensaje}
+                      <div style={{ textAlign: 'right', fontSize: '0.6875rem', color: '#9CA3AF', marginTop: '4px' }}>
+                        12:00 ✓✓
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: '4px' }}>
+                <label className="flex items-center gap-2" style={{ cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(botForm.activo)}
+                    onChange={e => setBotForm({ ...botForm, activo: e.target.checked ? 1 : 0 })}
+                  />
+                  <span>Habilitar esta respuesta en el Bot (Activo)</span>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2" style={{ marginTop: '16px', borderTop: '1px solid var(--color-border)', paddingTop: '14px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowBotModal(false)}
+                  disabled={botSaving}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={botSaving}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  <Save size={16} /> {botSaving ? 'Guardando...' : (editingBotId ? 'Actualizar Respuesta' : 'Crear Respuesta')}
                 </button>
               </div>
             </form>

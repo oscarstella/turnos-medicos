@@ -184,9 +184,19 @@ router.post('/medicos', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passHash = await bcrypt.hash(password || 'Medico1234!', salt);
 
+    // Generar slug del médico (ej: bocianjorge)
+    let cleanNombre = (nombre || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    let cleanApellido = (apellido || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    let baseSlug = (cleanApellido + cleanNombre) || `medico${Date.now()}`;
+    let doctorSlug = baseSlug;
+    const [slugRows] = await connection.query('SELECT id FROM usuarios WHERE slug = ? LIMIT 1', [doctorSlug]);
+    if (slugRows.length > 0) {
+      doctorSlug = `${baseSlug}${Math.floor(100 + Math.random() * 900)}`;
+    }
+
     const [inserted] = await connection.query(
-      `INSERT INTO usuarios (nombre, apellido, email, dni, matricula, contrasena, telefono, biografia, direccion, dias_antelacion_agenda, dia_apertura_agenda, acepta_particular, honorarios_particular, mostrar_honorarios, rol)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medico')`,
+      `INSERT INTO usuarios (nombre, apellido, email, dni, matricula, contrasena, slug, telefono, biografia, direccion, dias_antelacion_agenda, dia_apertura_agenda, acepta_particular, honorarios_particular, mostrar_honorarios, rol)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medico')`,
       [
         nombre.trim(),
         apellido.trim(),
@@ -194,6 +204,7 @@ router.post('/medicos', async (req, res) => {
         dni || null,
         matricula || null,
         passHash,
+        doctorSlug,
         telefono || null,
         biografia || null,
         direccion || null,
@@ -218,7 +229,7 @@ router.post('/medicos', async (req, res) => {
     }
 
     await connection.commit();
-    res.status(201).json({ status: 'success', message: 'Médico creado con éxito.', id: medicoId });
+    res.status(201).json({ status: 'success', message: 'Médico creado con éxito.', id: medicoId, slug: doctorSlug });
   } catch (error) {
     await connection.rollback();
     console.error('Error al crear médico:', error);
@@ -240,6 +251,7 @@ router.put('/medicos/:id', async (req, res) => {
       email,
       dni,
       matricula,
+      password,
       telefono,
       biografia,
       direccion,
@@ -252,8 +264,7 @@ router.put('/medicos/:id', async (req, res) => {
       obras_sociales
     } = req.body;
 
-    await connection.query(
-      `UPDATE usuarios SET 
+    let updateSql = `UPDATE usuarios SET 
         nombre = COALESCE(?, nombre),
         apellido = COALESCE(?, apellido),
         email = COALESCE(?, email),
@@ -266,25 +277,35 @@ router.put('/medicos/:id', async (req, res) => {
         dia_apertura_agenda = ?,
         acepta_particular = COALESCE(?, acepta_particular),
         honorarios_particular = ?,
-        mostrar_honorarios = COALESCE(?, mostrar_honorarios)
-       WHERE id = ? AND rol = 'medico'`,
-      [
-        nombre,
-        apellido,
-        email,
-        dni,
-        matricula,
-        telefono,
-        biografia,
-        direccion,
-        dias_antelacion_agenda,
-        dia_apertura_agenda || null,
-        acepta_particular !== undefined ? (acepta_particular ? 1 : 0) : null,
-        honorarios_particular !== undefined ? (honorarios_particular !== '' && honorarios_particular !== null && !isNaN(Number(honorarios_particular)) ? Number(honorarios_particular) : null) : null,
-        mostrar_honorarios !== undefined ? (mostrar_honorarios ? 1 : 0) : null,
-        id
-      ]
-    );
+        mostrar_honorarios = COALESCE(?, mostrar_honorarios)`;
+
+    const params = [
+      nombre,
+      apellido,
+      email,
+      dni,
+      matricula,
+      telefono,
+      biografia,
+      direccion,
+      dias_antelacion_agenda,
+      dia_apertura_agenda || null,
+      acepta_particular !== undefined ? (acepta_particular ? 1 : 0) : null,
+      honorarios_particular !== undefined ? (honorarios_particular !== '' && honorarios_particular !== null && !isNaN(Number(honorarios_particular)) ? Number(honorarios_particular) : null) : null,
+      mostrar_honorarios !== undefined ? (mostrar_honorarios ? 1 : 0) : null
+    ];
+
+    if (password && password.trim() !== '') {
+      const salt = await bcrypt.genSalt(10);
+      const passHash = await bcrypt.hash(password.trim(), salt);
+      updateSql += `, contrasena = ?`;
+      params.push(passHash);
+    }
+
+    updateSql += ` WHERE id = ? AND rol = 'medico'`;
+    params.push(id);
+
+    await connection.query(updateSql, params);
 
     if (Array.isArray(especialidades)) {
       await connection.query('DELETE FROM medicos_especialidades WHERE usuario_id = ?', [id]);
@@ -690,6 +711,128 @@ router.delete('/planes/:id', requireRole(['superadmin', 'admin']), async (req, r
   } catch (error) {
     console.error('Error al eliminar plan:', error);
     res.status(500).json({ status: 'error', message: 'Error al eliminar plan.' });
+  }
+});
+
+// =========================================================================
+// CRUD: Preguntas y Respuestas del Bot de WhatsApp
+// =========================================================================
+
+// Listar todas las respuestas y preguntas del bot
+router.get('/bot-respuestas', requireRole(['superadmin', 'admin']), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, clave, titulo, descripcion, disparador, mensaje, activo, creado_en, actualizado_en FROM bot_respuestas ORDER BY id ASC'
+    );
+    res.json({ status: 'success', data: rows });
+  } catch (error) {
+    console.error('Error al obtener respuestas del bot:', error);
+    res.status(500).json({ status: 'error', message: 'Error al obtener mensajes del bot.' });
+  }
+});
+
+// Obtener una respuesta por ID
+router.get('/bot-respuestas/:id', requireRole(['superadmin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await pool.query('SELECT * FROM bot_respuestas WHERE id = ? LIMIT 1', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Mensaje no encontrado.' });
+    }
+    res.json({ status: 'success', data: rows[0] });
+  } catch (error) {
+    console.error('Error al obtener mensaje del bot:', error);
+    res.status(500).json({ status: 'error', message: 'Error al obtener mensaje del bot.' });
+  }
+});
+
+// Crear nueva respuesta / pregunta del bot
+router.post('/bot-respuestas', requireRole(['superadmin', 'admin']), async (req, res) => {
+  try {
+    const { clave, titulo, descripcion, disparador, mensaje, activo = 1 } = req.body;
+    if (!clave || !titulo || !mensaje) {
+      return res.status(400).json({ status: 'error', message: 'Clave identificadora, título y mensaje son obligatorios.' });
+    }
+
+    const cleanClave = clave.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+
+    const [existing] = await pool.query('SELECT id FROM bot_respuestas WHERE clave = ? LIMIT 1', [cleanClave]);
+    if (existing.length > 0) {
+      return res.status(409).json({ status: 'error', message: 'Ya existe una respuesta o pregunta con esa clave.' });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO bot_respuestas (clave, titulo, descripcion, disparador, mensaje, activo)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [cleanClave, titulo.trim(), descripcion?.trim() || null, disparador?.trim() || null, mensaje.trim(), activo ? 1 : 0]
+    );
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Mensaje del bot creado exitosamente.',
+      id: result.insertId
+    });
+  } catch (error) {
+    console.error('Error al crear mensaje del bot:', error);
+    res.status(500).json({ status: 'error', message: 'Error al crear mensaje del bot.' });
+  }
+});
+
+// Actualizar respuesta / pregunta del bot
+router.put('/bot-respuestas/:id', requireRole(['superadmin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { clave, titulo, descripcion, disparador, mensaje, activo } = req.body;
+
+    if (!titulo || !mensaje) {
+      return res.status(400).json({ status: 'error', message: 'Título y mensaje son obligatorios.' });
+    }
+
+    const cleanClave = clave ? clave.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_') : null;
+
+    if (cleanClave) {
+      const [existing] = await pool.query('SELECT id FROM bot_respuestas WHERE clave = ? AND id != ? LIMIT 1', [cleanClave, id]);
+      if (existing.length > 0) {
+        return res.status(409).json({ status: 'error', message: 'Otra respuesta ya utiliza esa clave.' });
+      }
+    }
+
+    await pool.query(
+      `UPDATE bot_respuestas SET 
+         clave = COALESCE(?, clave),
+         titulo = ?,
+         descripcion = ?,
+         disparador = ?,
+         mensaje = ?,
+         activo = ?
+       WHERE id = ?`,
+      [
+        cleanClave,
+        titulo.trim(),
+        descripcion !== undefined ? (descripcion?.trim() || null) : null,
+        disparador !== undefined ? (disparador?.trim() || null) : null,
+        mensaje.trim(),
+        activo !== undefined ? (activo ? 1 : 0) : 1,
+        id
+      ]
+    );
+
+    res.json({ status: 'success', message: 'Mensaje del bot actualizado exitosamente.' });
+  } catch (error) {
+    console.error('Error al actualizar mensaje del bot:', error);
+    res.status(500).json({ status: 'error', message: 'Error al actualizar mensaje del bot.' });
+  }
+});
+
+// Eliminar respuesta del bot
+router.delete('/bot-respuestas/:id', requireRole(['superadmin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM bot_respuestas WHERE id = ?', [id]);
+    res.json({ status: 'success', message: 'Mensaje del bot eliminado exitosamente.' });
+  } catch (error) {
+    console.error('Error al eliminar mensaje del bot:', error);
+    res.status(500).json({ status: 'error', message: 'Error al eliminar mensaje del bot.' });
   }
 });
 

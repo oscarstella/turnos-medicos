@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     acepta_particular TINYINT(1) NOT NULL DEFAULT 1,
     honorarios_particular DECIMAL(10,2) NULL DEFAULT NULL,
     mostrar_honorarios TINYINT(1) NOT NULL DEFAULT 0,
+    slug VARCHAR(120) NULL UNIQUE,
     creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_usuario_obra_social FOREIGN KEY (obra_social_id) REFERENCES obras_sociales(id) ON DELETE SET NULL,
     CONSTRAINT fk_usuario_plan FOREIGN KEY (plan_id) REFERENCES planes_obras_sociales(id) ON DELETE SET NULL,

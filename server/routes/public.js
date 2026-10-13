@@ -309,30 +309,53 @@ router.get('/medicos', async (req, res) => {
   }
 });
 
-// 5. Perfil de un médico específico
+// 5. Perfil de un médico específico (por ID o por Slug / Nombre y Apellido)
 router.get('/medicos/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await pool.query(
-      `SELECT id, nombre, apellido, email, matricula, foto_perfil, biografia, direccion,
-              dias_antelacion_agenda, dia_apertura_agenda,
-              acepta_particular, honorarios_particular, mostrar_honorarios
-       FROM usuarios WHERE id = ? AND rol = 'medico' LIMIT 1`,
-      [id]
-    );
+    const cleanParam = String(id).trim().toLowerCase();
+    const isNumeric = /^\d+$/.test(cleanParam);
+
+    let query = `
+      SELECT id, nombre, apellido, email, matricula, foto_perfil, biografia, direccion,
+             dias_antelacion_agenda, dia_apertura_agenda,
+             acepta_particular, honorarios_particular, mostrar_honorarios, slug
+      FROM usuarios
+      WHERE rol = 'medico' AND (
+    `;
+    const params = [];
+
+    if (isNumeric) {
+      query += ` id = ? OR slug = ?`;
+      params.push(parseInt(cleanParam, 10), cleanParam);
+    } else {
+      const normalized = cleanParam.replace(/-/g, '').replace(/\s+/g, '');
+      query += `
+        slug = ?
+        OR LOWER(REPLACE(REPLACE(CONCAT(apellido, nombre), ' ', ''), '-', '')) = ?
+        OR LOWER(REPLACE(REPLACE(CONCAT(nombre, apellido), ' ', ''), '-', '')) = ?
+        OR LOWER(REPLACE(REPLACE(apellido, ' ', ''), '-', '')) = ?
+      `;
+      params.push(cleanParam, normalized, normalized, normalized);
+    }
+
+    query += ` ) LIMIT 1`;
+
+    const [rows] = await pool.query(query, params);
 
     if (rows.length === 0) {
       return res.status(404).json({ status: 'error', message: 'Médico no encontrado.' });
     }
 
     const medico = rows[0];
+    const medicoId = medico.id;
 
     // Especialidades
     const [esp] = await pool.query(
       `SELECT e.id, e.nombre FROM especialidades e
        JOIN medicos_especialidades me ON e.id = me.especialidad_id
        WHERE me.usuario_id = ?`,
-      [id]
+      [medicoId]
     );
 
     // Obras Sociales atendidas
@@ -340,7 +363,7 @@ router.get('/medicos/:id', async (req, res) => {
       `SELECT os.id, os.nombre FROM obras_sociales os
        JOIN medicos_obras_sociales mos ON os.id = mos.obra_social_id
        WHERE mos.usuario_id = ? ORDER BY os.nombre ASC`,
-      [id]
+      [medicoId]
     );
 
     // Horarios semanales
@@ -351,7 +374,7 @@ router.get('/medicos/:id', async (req, res) => {
        LEFT JOIN unidades_atencion ua ON hm.unidad_id = ua.id
        WHERE hm.medico_id = ?
        ORDER BY FIELD(hm.dia_semana, 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo'), hm.hora_inicio ASC`,
-      [id]
+      [medicoId]
     );
 
     res.json({
@@ -695,6 +718,100 @@ router.post('/agendar', optionalAuth, async (req, res) => {
     res.status(500).json({ status: 'error', message: 'No se pudo agendar el turno. Intenta nuevamente.' });
   } finally {
     connection.release();
+  }
+});
+
+// 8. Consultar turnos por DNI (acceso directo sin login obligatorio)
+router.get('/turnos-por-dni', async (req, res) => {
+  try {
+    const { dni } = req.query;
+    const cleanDni = normalizeDni(dni);
+    if (!cleanDni) {
+      return res.status(400).json({ status: 'error', message: 'Ingresa un DNI numérico válido (entre 7 y 9 números).' });
+    }
+
+    const [pacRows] = await pool.query(
+      'SELECT id, nombre, apellido, dni, email, telefono FROM usuarios WHERE dni = ? LIMIT 1',
+      [cleanDni]
+    );
+
+    if (pacRows.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: `No encontramos pacientes registrados con el DNI ${cleanDni}.`
+      });
+    }
+
+    const paciente = pacRows[0];
+    const [rows] = await pool.query(
+      `SELECT t.id, t.fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
+              m.id as medico_id, m.nombre as medico_nombre, m.apellido as medico_apellido, m.foto_perfil, m.matricula,
+              e.id as especialidad_id, e.nombre as especialidad_nombre,
+              os.nombre as obra_social_nombre,
+              p.nombre as plan_nombre,
+              ua.nombre as unidad_nombre, ua.calle, ua.numero, ua.localidad
+       FROM turnos t
+       JOIN usuarios m ON t.medico_id = m.id
+       LEFT JOIN especialidades e ON t.especialidad_id = e.id
+       LEFT JOIN obras_sociales os ON t.obra_social_id = os.id
+       LEFT JOIN planes_obras_sociales p ON t.plan_id = p.id
+       LEFT JOIN unidades_atencion ua ON t.unidad_id = ua.id
+       WHERE t.paciente_id = ?
+       ORDER BY t.fecha DESC, t.hora_inicio DESC`,
+      [paciente.id]
+    );
+
+    res.json({
+      status: 'success',
+      data: {
+        paciente,
+        turnos: rows
+      }
+    });
+  } catch (error) {
+    console.error('Error en /turnos-por-dni:', error);
+    res.status(500).json({ status: 'error', message: 'Error al consultar turnos por DNI.' });
+  }
+});
+
+// 9. Cancelar turno públicamente validando DNI
+router.put('/turnos/:id/cancelar', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { dni } = req.body;
+    const cleanDni = normalizeDni(dni);
+
+    if (!cleanDni) {
+      return res.status(400).json({ status: 'error', message: 'DNI obligatorio para cancelar el turno.' });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT t.id, t.estado, t.fecha, p.dni as paciente_dni
+       FROM turnos t
+       JOIN usuarios p ON t.paciente_id = p.id
+       WHERE t.id = ? LIMIT 1`,
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Turno no encontrado.' });
+    }
+
+    const turno = rows[0];
+    if (turno.paciente_dni !== cleanDni) {
+      return res.status(403).json({ status: 'error', message: 'El DNI no coincide con el paciente del turno.' });
+    }
+
+    if (turno.estado === 'cancelado') {
+      return res.status(400).json({ status: 'error', message: 'El turno ya se encuentra cancelado.' });
+    }
+
+    await pool.query('UPDATE turnos SET estado = "cancelado" WHERE id = ?', [id]);
+
+    res.json({ status: 'success', message: 'El turno ha sido cancelado exitosamente.' });
+  } catch (error) {
+    console.error('Error cancelando turno públicamente:', error);
+    res.status(500).json({ status: 'error', message: 'Error al cancelar turno.' });
   }
 });
 
