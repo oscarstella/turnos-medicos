@@ -334,6 +334,44 @@ router.put('/medicos/:id', async (req, res) => {
   }
 });
 
+// Asignar o cambiar credenciales de acceso de un médico
+router.put('/medicos/:id/credenciales', requireRole(['superadmin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email, password } = req.body;
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ status: 'error', message: 'El usuario / email es requerido.' });
+    }
+    if (!password || password.trim().length < 6) {
+      return res.status(400).json({ status: 'error', message: 'La contraseña debe contener al menos 6 caracteres.' });
+    }
+
+    // Verificar que el email no esté ocupado por otro usuario distinto
+    const [existing] = await pool.query('SELECT id FROM usuarios WHERE email = ? AND id != ?', [email.trim(), id]);
+    if (existing.length > 0) {
+      return res.status(400).json({ status: 'error', message: 'El email / usuario ya está registrado por otra cuenta.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passHash = await bcrypt.hash(password.trim(), salt);
+
+    const [result] = await pool.query(
+      `UPDATE usuarios SET email = ?, contrasena = ? WHERE id = ? AND rol = 'medico'`,
+      [email.trim(), passHash, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ status: 'error', message: 'Médico no encontrado.' });
+    }
+
+    res.json({ status: 'success', message: 'Credenciales del médico actualizadas correctamente.' });
+  } catch (error) {
+    console.error('Error al actualizar credenciales de médico:', error);
+    res.status(500).json({ status: 'error', message: 'Error interno al actualizar credenciales.' });
+  }
+});
+
 // 4b. Coberturas (Obras Sociales y Planes) de un médico
 router.get('/medicos/:id/coberturas', async (req, res) => {
   try {

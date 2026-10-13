@@ -14,12 +14,15 @@ import {
   EyeOff,
   Stethoscope,
   Award,
-  DollarSign
+  DollarSign,
+  HelpCircle,
+  X
 } from 'lucide-react';
 
 export default function LoginPage({ onLoginSuccess, initialRole = 'paciente' }) {
   const { login, register } = useAuth();
   const [userType, setUserType] = useState(initialRole || 'paciente');
+  const [showSolicitarModal, setShowSolicitarModal] = useState(false);
   const [isRegister, setIsRegister] = useState(() => {
     if (typeof window === 'undefined') return false;
     const searchParams = new URLSearchParams(window.location.search);
@@ -319,6 +322,30 @@ export default function LoginPage({ onLoginSuccess, initialRole = 'paciente' }) 
               {loading ? 'Ingresando...' : (userType === 'medico' ? 'Ingresar a mi Panel Médico' : 'Ingresar a mi cuenta')} <ArrowRight size={16} />
             </button>
 
+            {userType === 'medico' && (
+              <div style={{ textAlign: 'center', marginTop: '18px', paddingTop: '16px', borderTop: '1px solid var(--color-border)' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowSolicitarModal(true)}
+                  className="btn btn-sm"
+                  style={{
+                    background: 'transparent',
+                    border: '1px dashed var(--color-primary)',
+                    color: 'var(--color-primary)',
+                    fontWeight: 600,
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    padding: '10px'
+                  }}
+                >
+                  <HelpCircle size={16} /> Solicitar login al administrador
+                </button>
+              </div>
+            )}
+
           </form>
         ) : (
           /* FORMULARIO REGISTRO PACIENTE */
@@ -432,6 +459,99 @@ export default function LoginPage({ onLoginSuccess, initialRole = 'paciente' }) 
         )}
 
       </div>
+
+      {/* Modal: Solicitar login al administrador */}
+      {showSolicitarModal && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}
+          onClick={() => setShowSolicitarModal(false)}
+        >
+          <div 
+            className="glass-panel"
+            style={{
+              maxWidth: '460px',
+              width: '100%',
+              padding: '28px',
+              background: 'var(--color-surface)',
+              borderRadius: '16px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.25)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between" style={{ marginBottom: '16px' }}>
+              <div className="flex items-center gap-2">
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '10px',
+                  background: 'rgba(2, 132, 199, 0.1)',
+                  color: 'var(--color-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Stethoscope size={20} />
+                </div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0 }}>
+                  Solicitud de Acceso Profesional
+                </h3>
+              </div>
+              <button 
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowSolicitarModal(false)}
+                style={{ padding: '6px', borderRadius: '50%' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', lineHeight: 1.5, marginBottom: '18px' }}>
+              Para obtener tu usuario y contraseña de acceso al portal de médicos, o restablecer tus credenciales, por favor comunícate directamente con la Dirección y Administración del Sanatorio.
+            </p>
+
+            <div style={{
+              background: 'var(--color-bg)',
+              padding: '16px',
+              borderRadius: '12px',
+              marginBottom: '20px',
+              border: '1px solid var(--color-border)',
+              fontSize: '0.875rem'
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: '8px', color: 'var(--color-text-main)' }}>
+                🏥 Administración & Sistemas Sanatorio San Carlos
+              </div>
+              <div style={{ color: 'var(--color-text-muted)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div>📧 Correo: <strong style={{ color: 'var(--color-text-main)' }}>administracion@sancarlos.com</strong></div>
+                <div>📞 Teléfono: <strong style={{ color: 'var(--color-text-main)' }}>(0294) 442-5555</strong></div>
+                <div>💬 WhatsApp: <strong style={{ color: 'var(--color-text-main)' }}>+54 9 2944 000000</strong></div>
+              </div>
+            </div>
+
+            <button 
+              type="button"
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+              onClick={() => setShowSolicitarModal(false)}
+            >
+              Entendido, volver
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

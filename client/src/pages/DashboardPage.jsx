@@ -21,6 +21,8 @@ import {
   Trash2,
   Edit,
   Eye,
+  EyeOff,
+  Key,
   X,
   Sparkles,
   Stethoscope,
@@ -99,6 +101,13 @@ export default function DashboardPage() {
   const [newPlanNombre, setNewPlanNombre] = useState('');
   const [editingObraId, setEditingObraId] = useState(null);
   const [editingObraNombre, setEditingObraNombre] = useState('');
+
+  // Asignar credenciales a médico (Admin)
+  const [credMedicoId, setCredMedicoId] = useState('');
+  const [credEmail, setCredEmail] = useState('');
+  const [credPassword, setCredPassword] = useState('');
+  const [showCredPassword, setShowCredPassword] = useState(false);
+  const [savingCred, setSavingCred] = useState(false);
 
   // Horarios Tab
   const [horariosMedicoId, setHorariosMedicoId] = useState('');
@@ -283,7 +292,10 @@ export default function DashboardPage() {
       // Cargar horarios del médico
       api.get('/medico/horarios')
         .then(res => {
-          if (res.data?.data) setHorariosBloques(res.data.data);
+          if (res.data?.data) {
+            setHorariosBloques(res.data.data);
+            setHorariosMedicoId(user?.id);
+          }
         })
         .catch(console.error);
 
@@ -301,7 +313,18 @@ export default function DashboardPage() {
         })
         .catch(console.error);
     }
-  }, [isDoctor]);
+  }, [isDoctor, user?.id]);
+
+  useEffect(() => {
+    if (activeTab === 'horarios' && isDoctor && user?.id) {
+      setHorariosMedicoId(user.id);
+      api.get('/medico/horarios')
+        .then(res => {
+          if (res.data?.data) setHorariosBloques(res.data.data);
+        })
+        .catch(console.error);
+    }
+  }, [activeTab, isDoctor, user?.id]);
 
   useEffect(() => {
     fetchTurnos();
@@ -525,6 +548,9 @@ export default function DashboardPage() {
   };
 
   const handleSaveHorarios = async () => {
+    if (isDoctor) {
+      return handleSaveDoctorPersonalHorarios();
+    }
     if (!horariosMedicoId) return;
     setSavingHorarios(true);
     try {
@@ -534,6 +560,36 @@ export default function DashboardPage() {
       alert(err.message || 'Error al guardar horarios.');
     } finally {
       setSavingHorarios(false);
+    }
+  };
+
+  const handleGuardarCredencialesMedico = async (e) => {
+    e.preventDefault();
+    if (!credMedicoId) {
+      alert('Por favor selecciona un profesional de la lista.');
+      return;
+    }
+    if (!credEmail.trim()) {
+      alert('Por favor ingresa un correo o usuario válido.');
+      return;
+    }
+    if (!credPassword.trim() || credPassword.trim().length < 6) {
+      alert('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    setSavingCred(true);
+    try {
+      const res = await api.put(`/admin/medicos/${credMedicoId}/credenciales`, {
+        email: credEmail.trim(),
+        password: credPassword.trim()
+      });
+      showToast(res.data?.message || 'Credenciales asignadas exitosamente al médico.');
+      setCredPassword('');
+      fetchMedicos();
+    } catch (err) {
+      alert(err.message || 'Error al asignar credenciales.');
+    } finally {
+      setSavingCred(false);
     }
   };
 
@@ -1578,34 +1634,138 @@ export default function DashboardPage() {
                     <button 
                       className="btn btn-secondary btn-sm"
                       style={{ flex: 1 }}
-                      onClick={() => {
-                        setActiveTab('horarios');
-                        handleSelectMedicoHorarios(m.id);
-                      }}
-                    >
-                      <Clock size={14} /> Horarios
-                    </button>
-                    <button 
-                      className="btn btn-secondary btn-sm"
-                      style={{ flex: 1 }}
                       onClick={() => handleOpenDoctorCoberturas(m)}
                     >
                       <ShieldCheck size={14} /> Coberturas
                     </button>
                     <button 
                       className="btn btn-secondary btn-sm"
-                      style={{ flex: 1 }}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       onClick={() => {
-                        setActiveTab('reglas');
-                        handleSelectMedicoReglas(m.id);
+                        setCredMedicoId(m.id);
+                        setCredEmail(m.email || '');
+                        setCredPassword('');
+                        const el = document.getElementById('seccion-credenciales-medico');
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
                       }}
+                      title="Asignar o Modificar Credenciales de Acceso"
                     >
-                      <Settings size={14} /> Reglas
+                      <Key size={14} /> Credenciales
                     </button>
                   </div>
                 </div>
               );
             })}
+          </div>
+
+          {/* SECCIÓN ASIGNAR O CAMBIAR USUARIO Y CONTRASEÑA A UN MÉDICO */}
+          <div id="seccion-credenciales-medico" style={{ marginTop: '32px', padding: '24px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
+            <div className="flex items-center gap-3" style={{ marginBottom: '18px' }}>
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.15), rgba(5, 150, 105, 0.15))',
+                color: 'var(--color-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Key size={22} />
+              </div>
+              <div>
+                <h4 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: 'var(--color-text-main)' }}>
+                  Asignar o Modificar Usuario y Contraseña a un Médico
+                </h4>
+                <p style={{ margin: '2px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                  Configura las credenciales para que el profesional ingrese a su Portal Médico exclusivo
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleGuardarCredencialesMedico}>
+              <div className="grid grid-cols-3 gap-4" style={{ marginBottom: '16px' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Seleccionar Médico <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                  <SearchableSelect
+                    options={medicos.map(m => ({ id: m.id, label: `Dr. ${m.nombre} ${m.apellido} (${m.email || 'Sin usuario'})` }))}
+                    value={credMedicoId}
+                    onChange={(val) => {
+                      setCredMedicoId(val);
+                      const med = medicos.find(m => String(m.id) === String(val));
+                      if (med) {
+                        setCredEmail(med.email || '');
+                        setCredPassword('');
+                      }
+                    }}
+                    placeholder="Selecciona el profesional..."
+                    searchPlaceholder="Buscar médico..."
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Usuario / Correo Electrónico <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="Ej: doctor@sancarlos.com"
+                    required
+                    value={credEmail}
+                    onChange={e => setCredEmail(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Nueva Contraseña <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showCredPassword ? 'text' : 'password'}
+                      className="form-input"
+                      placeholder="Mínimo 6 caracteres"
+                      required
+                      value={credPassword}
+                      onChange={e => setCredPassword(e.target.value)}
+                      style={{ paddingRight: '40px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCredPassword(!showCredPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--color-text-muted)'
+                      }}
+                    >
+                      {showCredPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between" style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--color-border)' }}>
+                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                  {credMedicoId ? (
+                    <span>Médico seleccionado: <strong style={{ color: 'var(--color-primary)' }}>Dr. {medicos.find(m => String(m.id) === String(credMedicoId))?.nombre} {medicos.find(m => String(m.id) === String(credMedicoId))?.apellido}</strong></span>
+                  ) : (
+                    <span>Selecciona un médico de la lista o presiona el botón "Credenciales" en su tarjeta superior.</span>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={savingCred || !credMedicoId}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  <Key size={16} /> {savingCred ? 'Guardando...' : 'Guardar Credenciales'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1774,24 +1934,40 @@ export default function DashboardPage() {
       {activeTab === 'horarios' && (
         <div className="card" style={{ padding: '24px' }}>
           <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '8px' }}>
-            Configuración de Horarios de Atención Semanal
+            {isDoctor ? 'Mis Horarios de Atención Semanal' : 'Configuración de Horarios de Atención Semanal'}
           </h3>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginBottom: '20px' }}>
-            Define los bloques semanales en los que el médico atiende en cada consultorio.
+            {isDoctor 
+              ? 'Define tus bloques semanales y la duración de cada consulta para que los pacientes puedan agendar turnos.'
+              : 'Define los bloques semanales en los que el médico atiende en cada consultorio.'}
           </p>
 
-          <div className="form-group" style={{ maxWidth: '420px', marginBottom: '24px' }}>
-            <label className="form-label">Selecciona el Profesional (Select2)</label>
-            <SearchableSelect
-              options={medicos.map(m => ({ id: m.id, label: `Dr. ${m.nombre} ${m.apellido}` }))}
-              value={horariosMedicoId}
-              onChange={handleSelectMedicoHorarios}
-              placeholder="Selecciona un médico..."
-              searchPlaceholder="Buscar médico..."
-            />
-          </div>
+          {isDoctor ? (
+            <div style={{ padding: '14px 18px', background: 'rgba(2, 132, 199, 0.08)', borderRadius: '12px', border: '1px solid rgba(2, 132, 199, 0.2)', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Stethoscope size={24} color="var(--color-primary)" />
+              <div>
+                <strong style={{ color: 'var(--color-primary)', fontSize: '1rem', display: 'block' }}>
+                  Agenda de Atención Semanal: Dr/a. {user?.nombre} {user?.apellido}
+                </strong>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                  Configurá tus días de atención, el rango de horarios y la duración que tendrá cada consulta (15, 20, 30, 45 o 60 min).
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="form-group" style={{ maxWidth: '420px', marginBottom: '24px' }}>
+              <label className="form-label">Selecciona el Profesional (Select2)</label>
+              <SearchableSelect
+                options={medicos.map(m => ({ id: m.id, label: `Dr. ${m.nombre} ${m.apellido}` }))}
+                value={horariosMedicoId}
+                onChange={handleSelectMedicoHorarios}
+                placeholder="Selecciona un médico..."
+                searchPlaceholder="Buscar médico..."
+              />
+            </div>
+          )}
 
-          {horariosMedicoId && (
+          {(isDoctor || horariosMedicoId) && (
             <div>
               <div className="flex items-center justify-between" style={{ marginBottom: '16px' }}>
                 <h4 style={{ fontSize: '1rem', fontWeight: 700 }}>Bloques Semanales Configurados</h4>
@@ -1802,7 +1978,9 @@ export default function DashboardPage() {
 
               {horariosBloques.length === 0 ? (
                 <div style={{ padding: '32px', textAlign: 'center', background: 'var(--color-bg)', borderRadius: '12px', color: 'var(--color-text-muted)', marginBottom: '20px' }}>
-                  Este médico no tiene bloques de atención configurados. Haz clic en "Añadir Bloque" para habilitar su agenda.
+                  {isDoctor 
+                    ? 'Aún no configuraste tus bloques de atención semanal. Haz clic en "Añadir Bloque de Horario" para habilitar tu agenda.' 
+                    : 'Este médico no tiene bloques de atención configurados. Haz clic en "Añadir Bloque" para habilitar su agenda.'}
                 </div>
               ) : (
                 <div className="flex flex-col gap-3" style={{ marginBottom: '24px' }}>
@@ -1906,7 +2084,7 @@ export default function DashboardPage() {
                 onClick={handleSaveHorarios}
                 disabled={savingHorarios}
               >
-                <Save size={16} /> {savingHorarios ? 'Guardando...' : 'Guardar Horarios del Profesional'}
+                <Save size={16} /> {savingHorarios ? 'Guardando...' : (isDoctor ? 'Guardar Mis Horarios' : 'Guardar Horarios del Profesional')}
               </button>
             </div>
           )}
