@@ -76,7 +76,7 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
   }, [doctor]);
 
   useEffect(() => {
-    if (patientForm.obra_social_id) {
+    if (patientForm.obra_social_id && patientForm.obra_social_id !== 'particular') {
       api.get(`/public/planes?obra_social_id=${patientForm.obra_social_id}`)
         .then((res) => {
           if (res.data) setPlanes(res.data);
@@ -194,27 +194,59 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
     e.preventDefault();
     if (!selectedSlot) return;
     setErrorMsg('');
+
+    // Validación de obligatoriedad de todos los campos
+    if (!patientForm.nombre.trim()) {
+      setErrorMsg('El Nombre es obligatorio.');
+      return;
+    }
+    if (!patientForm.apellido.trim()) {
+      setErrorMsg('El Apellido es obligatorio.');
+      return;
+    }
+    if (!patientForm.dni.trim()) {
+      setErrorMsg('El DNI / Documento es obligatorio.');
+      return;
+    }
+    if (!patientForm.email.trim()) {
+      setErrorMsg('El Correo Electrónico es obligatorio.');
+      return;
+    }
+    if (!patientForm.telefono.trim()) {
+      setErrorMsg('El Teléfono / WhatsApp es obligatorio.');
+      return;
+    }
+    if (!patientForm.obra_social_id) {
+      setErrorMsg('Debes seleccionar una Obra Social / Prepaga o la opción Particular.');
+      return;
+    }
+    if (patientForm.obra_social_id !== 'particular' && planes.length > 0 && !patientForm.plan_id) {
+      setErrorMsg('Debes seleccionar el Plan de Cobertura de tu obra social.');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
+      const isParticular = patientForm.obra_social_id === 'particular';
       const payload = {
         medico_id: doctor.id,
         especialidad_id: doctorDetail?.especialidades?.[0]?.id || null,
-        obra_social_id: patientForm.obra_social_id || null,
-        plan_id: patientForm.plan_id || null,
+        obra_social_id: isParticular ? null : patientForm.obra_social_id,
+        plan_id: isParticular ? null : (patientForm.plan_id || null),
         unidad_id: selectedSlot.unidad_id || null,
         fecha: selectedDate,
         hora_inicio: selectedSlot.hora_inicio,
         hora_fin: selectedSlot.hora_fin,
-        notas: patientForm.notas || null,
-        paciente: !user ? {
-          nombre: patientForm.nombre,
-          apellido: patientForm.apellido,
-          dni: patientForm.dni,
-          email: patientForm.email,
-          telefono: patientForm.telefono,
+        notas: patientForm.notas || (isParticular ? 'Consulta Particular' : null),
+        paciente: {
+          nombre: patientForm.nombre.trim(),
+          apellido: patientForm.apellido.trim(),
+          dni: patientForm.dni.trim(),
+          email: patientForm.email.trim(),
+          telefono: patientForm.telefono.trim(),
           tiene_whatsapp: patientForm.tiene_whatsapp
-        } : null
+        }
       };
 
       const res = await api.post('/public/agendar', payload);
@@ -579,7 +611,9 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
             <form onSubmit={handleConfirmBooking}>
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
-                  <label className="form-label">Nombre</label>
+                  <label className="form-label">
+                    Nombre <span style={{ color: 'var(--color-danger)' }}>*</span>
+                  </label>
                   <input 
                     type="text" 
                     className="form-input" 
@@ -589,7 +623,9 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Apellido</label>
+                  <label className="form-label">
+                    Apellido <span style={{ color: 'var(--color-danger)' }}>*</span>
+                  </label>
                   <input 
                     type="text" 
                     className="form-input" 
@@ -602,18 +638,22 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
-                  <label className="form-label">DNI / Documento</label>
+                  <label className="form-label">
+                    DNI / Documento <span style={{ color: 'var(--color-danger)' }}>*</span>
+                  </label>
                   <input 
                     type="text" 
                     className="form-input" 
                     required 
-                    placeholder="Sin puntos"
+                    placeholder="Sin puntos ni espacios"
                     value={patientForm.dni}
                     onChange={(e) => setPatientForm({ ...patientForm, dni: e.target.value })}
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Correo Electrónico</label>
+                  <label className="form-label">
+                    Correo Electrónico <span style={{ color: 'var(--color-danger)' }}>*</span>
+                  </label>
                   <input 
                     type="email" 
                     className="form-input" 
@@ -626,33 +666,79 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
-                  <label className="form-label">Teléfono / WhatsApp</label>
+                  <label className="form-label">
+                    Teléfono / WhatsApp <span style={{ color: 'var(--color-danger)' }}>*</span>
+                  </label>
                   <input 
                     type="tel" 
                     className="form-input" 
+                    required
                     placeholder="Ej: 2944123456"
                     value={patientForm.telefono}
                     onChange={(e) => setPatientForm({ ...patientForm, telefono: e.target.value })}
                   />
                 </div>
 
-                {/* Obra Social con Select2 Buscable */}
+                {/* Obra Social / Cobertura / Particular con Select2 Buscable */}
                 <div className="form-group">
-                  <label className="form-label">Obra Social / Prepaga</label>
+                  <label className="form-label">
+                    Obra Social / Cobertura <span style={{ color: 'var(--color-danger)' }}>*</span>
+                  </label>
                   <SearchableSelect
-                    options={obrasSociales.map(os => ({ id: os.id, label: os.nombre }))}
+                    options={(() => {
+                      const acceptsParticular = doctorDetail?.acepta_particular !== false;
+                      const honorariosMonto = (doctorDetail?.honorarios_particular && Number(doctorDetail.honorarios_particular) > 0) ? Number(doctorDetail.honorarios_particular) : null;
+                      const showHonorarios = !!doctorDetail?.mostrar_honorarios && honorariosMonto !== null;
+                      const particularLabel = showHonorarios
+                        ? `Particular (Sus honorarios son $${honorariosMonto.toLocaleString('es-AR')})`
+                        : 'Particular';
+                      const doctorObras = (doctorDetail?.obras_sociales && doctorDetail.obras_sociales.length > 0)
+                        ? doctorDetail.obras_sociales
+                        : obrasSociales;
+
+                      return [
+                        ...(acceptsParticular ? [{ id: 'particular', label: particularLabel }] : []),
+                        ...doctorObras.map(os => ({ id: os.id, label: os.nombre }))
+                      ];
+                    })()}
                     value={patientForm.obra_social_id}
                     onChange={(val) => setPatientForm({ ...patientForm, obra_social_id: val, plan_id: '' })}
-                    placeholder="Particular / Ninguna"
-                    searchPlaceholder="Buscar mutual u obra social..."
+                    placeholder="Seleccionar Cobertura o Particular..."
+                    searchPlaceholder="Buscar mutual, prepaga o particular..."
                   />
                 </div>
               </div>
 
-              {/* Plan con Select2 Buscable */}
-              {planes.length > 0 && (
+              {/* Tarjeta de Información de Atención Particular */}
+              {patientForm.obra_social_id === 'particular' && (
+                <div style={{
+                  padding: '12px 16px',
+                  background: 'rgba(37, 99, 235, 0.08)',
+                  border: '1px solid rgba(37, 99, 235, 0.25)',
+                  borderRadius: '8px',
+                  marginBottom: '16px',
+                  color: 'var(--color-text-main)',
+                  fontSize: '0.875rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: 'var(--color-primary)', marginBottom: '4px' }}>
+                    <Sparkles size={16} /> Atención Particular
+                  </div>
+                  {doctorDetail?.mostrar_honorarios && doctorDetail?.honorarios_particular && Number(doctorDetail.honorarios_particular) > 0 ? (
+                    <div>
+                      Sus honorarios son: <strong style={{ fontSize: '1.05rem', color: 'var(--color-primary)' }}>${Number(doctorDetail.honorarios_particular).toLocaleString('es-AR')}</strong>
+                    </div>
+                  ) : (
+                    <div>Atención privada. Los honorarios de la consulta se abonan al momento de la atención.</div>
+                  )}
+                </div>
+              )}
+
+              {/* Plan con Select2 Buscable si no es particular y la obra social tiene planes */}
+              {patientForm.obra_social_id && patientForm.obra_social_id !== 'particular' && planes.length > 0 && (
                 <div className="form-group">
-                  <label className="form-label">Plan de Cobertura</label>
+                  <label className="form-label">
+                    Plan de Cobertura <span style={{ color: 'var(--color-danger)' }}>*</span>
+                  </label>
                   <SearchableSelect
                     options={planes.map(p => ({ id: p.id, label: p.nombre }))}
                     value={patientForm.plan_id}

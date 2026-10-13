@@ -21,7 +21,8 @@ import {
   Trash2,
   Edit,
   Eye,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'];
@@ -56,8 +57,29 @@ export default function DashboardPage() {
     direccion: '',
     dias_antelacion_agenda: 60,
     dia_apertura_agenda: '',
+    acepta_particular: true,
+    honorarios_particular: '',
+    mostrar_honorarios: false,
     especialidades: []
   });
+
+  // Modal Ficha del Médico y Honorarios Particulares
+  const [editingFichaMedico, setEditingFichaMedico] = useState(null);
+  const [fichaForm, setFichaForm] = useState({
+    nombre: '',
+    apellido: '',
+    email: '',
+    matricula: '',
+    telefono: '',
+    biografia: '',
+    direccion: '',
+    acepta_particular: true,
+    honorarios_particular: '',
+    mostrar_honorarios: false,
+    dias_antelacion_agenda: '',
+    dia_apertura_agenda: ''
+  });
+  const [savingFicha, setSavingFicha] = useState(false);
 
   // Obras Sociales & Planes Tab
   const [adminObrasSociales, setAdminObrasSociales] = useState([]);
@@ -411,6 +433,53 @@ export default function DashboardPage() {
     }
   };
 
+  const handleOpenEditFicha = (medico) => {
+    setEditingFichaMedico(medico);
+    setFichaForm({
+      nombre: medico.nombre || '',
+      apellido: medico.apellido || '',
+      email: medico.email || '',
+      matricula: medico.matricula || '',
+      telefono: medico.telefono || '',
+      biografia: medico.biografia || '',
+      direccion: medico.direccion || '',
+      acepta_particular: medico.acepta_particular !== 0 && medico.acepta_particular !== false,
+      honorarios_particular: medico.honorarios_particular !== null && medico.honorarios_particular !== undefined ? medico.honorarios_particular : '',
+      mostrar_honorarios: !!medico.mostrar_honorarios,
+      dias_antelacion_agenda: medico.dias_antelacion_agenda !== null && medico.dias_antelacion_agenda !== undefined ? medico.dias_antelacion_agenda : '',
+      dia_apertura_agenda: medico.dia_apertura_agenda || ''
+    });
+  };
+
+  const handleSaveFicha = async (e) => {
+    e.preventDefault();
+    if (!editingFichaMedico) return;
+    setSavingFicha(true);
+    try {
+      await api.put(`/admin/medicos/${editingFichaMedico.id}`, {
+        nombre: fichaForm.nombre,
+        apellido: fichaForm.apellido,
+        email: fichaForm.email,
+        matricula: fichaForm.matricula,
+        telefono: fichaForm.telefono,
+        biografia: fichaForm.biografia,
+        direccion: fichaForm.direccion,
+        acepta_particular: fichaForm.acepta_particular,
+        honorarios_particular: fichaForm.honorarios_particular !== '' && !isNaN(Number(fichaForm.honorarios_particular)) ? Number(fichaForm.honorarios_particular) : null,
+        mostrar_honorarios: fichaForm.mostrar_honorarios,
+        dias_antelacion_agenda: fichaForm.dias_antelacion_agenda !== '' && !isNaN(parseInt(fichaForm.dias_antelacion_agenda, 10)) ? parseInt(fichaForm.dias_antelacion_agenda, 10) : null,
+        dia_apertura_agenda: fichaForm.dia_apertura_agenda !== '' && !isNaN(parseInt(fichaForm.dia_apertura_agenda, 10)) ? parseInt(fichaForm.dia_apertura_agenda, 10) : null
+      });
+      showToast('Ficha del profesional y honorarios actualizados correctamente.');
+      setEditingFichaMedico(null);
+      fetchMedicos();
+    } catch (err) {
+      alert(err.message || 'Error al guardar ficha del profesional.');
+    } finally {
+      setSavingFicha(false);
+    }
+  };
+
   const handleCreateEspecialidad = async (e) => {
     e.preventDefault();
     if (!newEspecialidad.trim()) return;
@@ -755,9 +824,40 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '12px' }}>
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
                     <strong>Especialidades:</strong> {m.especialidades_nombres || 'General'}
                   </div>
+
+                  {/* Estado de Atención Particular y Honorarios */}
+                  <div style={{
+                    fontSize: '0.75rem',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    background: m.acepta_particular !== 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                    color: m.acepta_particular !== 0 ? '#059669' : '#dc2626',
+                    marginBottom: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <span>
+                      {m.acepta_particular !== 0 ? '✓ Atiende Particular' : '✗ No atiende particular'}
+                    </span>
+                    {m.acepta_particular !== 0 && m.honorarios_particular && (
+                      <span style={{ fontWeight: 700 }}>
+                        ${Number(m.honorarios_particular).toLocaleString('es-AR')}
+                        {m.mostrar_honorarios ? ' (Visible)' : ' (Oculto)'}
+                      </span>
+                    )}
+                  </div>
+
+                  <button 
+                    className="btn btn-primary btn-sm"
+                    style={{ width: '100%', marginBottom: '8px' }}
+                    onClick={() => handleOpenEditFicha(m)}
+                  >
+                    <Edit size={14} /> Ficha & Honorarios
+                  </button>
 
                   <div className="flex gap-2">
                     <button 
@@ -1604,6 +1704,42 @@ export default function DashboardPage() {
                 />
               </div>
 
+              <div style={{ padding: '12px', background: 'var(--color-bg)', borderRadius: '8px', marginBottom: '16px', border: '1px solid var(--color-border)' }}>
+                <label className="flex items-center gap-2" style={{ cursor: 'pointer', marginBottom: '10px', fontSize: '0.875rem', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={medicoForm.acepta_particular}
+                    onChange={e => setMedicoForm({ ...medicoForm, acepta_particular: e.target.checked })}
+                  />
+                  <span>Atiende pacientes particulares</span>
+                </label>
+
+                {medicoForm.acepta_particular && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Honorarios Particulares ($)</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        placeholder="Ej: 25000"
+                        value={medicoForm.honorarios_particular}
+                        onChange={e => setMedicoForm({ ...medicoForm, honorarios_particular: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group flex flex-col justify-end" style={{ margin: 0 }}>
+                      <label className="flex items-center gap-2" style={{ cursor: 'pointer', fontSize: '0.8125rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={medicoForm.mostrar_honorarios}
+                          onChange={e => setMedicoForm({ ...medicoForm, mostrar_honorarios: e.target.checked })}
+                        />
+                        <span>Mostrar honorarios en reserva</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end gap-3" style={{ marginTop: '24px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowMedicoModal(false)}>
                   Cancelar
@@ -1859,6 +1995,176 @@ export default function DashboardPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FICHA DEL MÉDICO & HONORARIOS PARTICULARES */}
+      {editingFichaMedico && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '640px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--color-border)' }}>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
+                  Ficha Profesional & Honorarios
+                </h3>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: '4px 0 0' }}>
+                  Dr. {editingFichaMedico.nombre} {editingFichaMedico.apellido}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setEditingFichaMedico(null)}
+                style={{ padding: '6px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFicha}>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="form-group">
+                  <label className="form-label">Nombre</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    required
+                    value={fichaForm.nombre}
+                    onChange={e => setFichaForm({ ...fichaForm, nombre: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Apellido</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    required
+                    value={fichaForm.apellido}
+                    onChange={e => setFichaForm({ ...fichaForm, apellido: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="form-group">
+                  <label className="form-label">Matrícula (M.N. / M.P.)</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Ej: 14590"
+                    value={fichaForm.matricula}
+                    onChange={e => setFichaForm({ ...fichaForm, matricula: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Teléfono de Contacto</label>
+                  <input
+                    type="tel"
+                    className="form-input"
+                    placeholder="Ej: 2944123456"
+                    value={fichaForm.telefono}
+                    onChange={e => setFichaForm({ ...fichaForm, telefono: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* SECCIÓN ATENCIÓN PARTICULAR Y HONORARIOS */}
+              <div style={{
+                margin: '18px 0',
+                padding: '16px',
+                borderRadius: '10px',
+                background: 'rgba(37, 99, 235, 0.05)',
+                border: '1px solid rgba(37, 99, 235, 0.2)'
+              }}>
+                <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <Sparkles size={18} /> Configuración de Particular & Honorarios
+                </h4>
+
+                <label className="flex items-center gap-2" style={{ cursor: 'pointer', marginBottom: '12px', fontSize: '0.875rem', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={fichaForm.acepta_particular}
+                    onChange={e => setFichaForm({ ...fichaForm, acepta_particular: e.target.checked })}
+                  />
+                  <span>¿Atiende pacientes particulares (privado)?</span>
+                </label>
+
+                {fichaForm.acepta_particular && (
+                  <>
+                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                      <label className="form-label">Valor de los Honorarios de Consulta Particular ($)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        className="form-input"
+                        placeholder="Ej: 25000 (opcional)"
+                        value={fichaForm.honorarios_particular}
+                        onChange={e => setFichaForm({ ...fichaForm, honorarios_particular: e.target.value })}
+                      />
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                        Monto de honorarios para la consulta médica privada.
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2" style={{ cursor: 'pointer', fontSize: '0.875rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={fichaForm.mostrar_honorarios}
+                        onChange={e => setFichaForm({ ...fichaForm, mostrar_honorarios: e.target.checked })}
+                      />
+                      <span>
+                        <strong>¿Desea que aparezca el valor de los honorarios en la reserva?</strong>
+                      </span>
+                    </label>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px', marginLeft: '22px' }}>
+                      Si se activa, el paciente verá: <em>"Particular (Sus honorarios son $XXXX)"</em>. Si se desactiva, solo verá <em>"Particular"</em> sin mostrar el importe.
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Dirección de Consultorio</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Ej: Mitre 124, Consultorio 3"
+                  value={fichaForm.direccion}
+                  onChange={e => setFichaForm({ ...fichaForm, direccion: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Biografía / Perfil Profesional</label>
+                <textarea
+                  className="form-textarea"
+                  rows={2}
+                  placeholder="Breve reseña sobre experiencia o trayectoria..."
+                  value={fichaForm.biografia}
+                  onChange={e => setFichaForm({ ...fichaForm, biografia: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3" style={{ marginTop: '24px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setEditingFichaMedico(null)}
+                  disabled={savingFicha}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={savingFicha}
+                >
+                  {savingFicha ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

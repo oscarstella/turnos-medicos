@@ -128,6 +128,7 @@ router.get('/medicos', async (req, res) => {
     const [rows] = await pool.query(`
       SELECT u.id, u.nombre, u.apellido, u.email, u.dni, u.telefono, u.matricula, u.foto_perfil,
              u.biografia, u.direccion, u.dias_antelacion_agenda, u.dia_apertura_agenda,
+             u.acepta_particular, u.honorarios_particular, u.mostrar_honorarios,
              GROUP_CONCAT(DISTINCT me.especialidad_id) as especialidades_ids,
              GROUP_CONCAT(DISTINCT e.nombre SEPARATOR ', ') as especialidades_nombres
       FROM usuarios u
@@ -168,6 +169,9 @@ router.post('/medicos', async (req, res) => {
       direccion,
       dias_antelacion_agenda = 60,
       dia_apertura_agenda,
+      acepta_particular = 1,
+      honorarios_particular = null,
+      mostrar_honorarios = 0,
       especialidades = [],
       obras_sociales = []
     } = req.body;
@@ -181,8 +185,8 @@ router.post('/medicos', async (req, res) => {
     const passHash = await bcrypt.hash(password || 'Medico1234!', salt);
 
     const [inserted] = await connection.query(
-      `INSERT INTO usuarios (nombre, apellido, email, dni, matricula, contrasena, telefono, biografia, direccion, dias_antelacion_agenda, dia_apertura_agenda, rol)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medico')`,
+      `INSERT INTO usuarios (nombre, apellido, email, dni, matricula, contrasena, telefono, biografia, direccion, dias_antelacion_agenda, dia_apertura_agenda, acepta_particular, honorarios_particular, mostrar_honorarios, rol)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medico')`,
       [
         nombre.trim(),
         apellido.trim(),
@@ -194,7 +198,10 @@ router.post('/medicos', async (req, res) => {
         biografia || null,
         direccion || null,
         dias_antelacion_agenda,
-        dia_apertura_agenda || null
+        dia_apertura_agenda || null,
+        acepta_particular !== false && acepta_particular !== 0 ? 1 : 0,
+        honorarios_particular !== '' && honorarios_particular !== null && !isNaN(Number(honorarios_particular)) ? Number(honorarios_particular) : null,
+        mostrar_honorarios ? 1 : 0
       ]
     );
 
@@ -238,6 +245,9 @@ router.put('/medicos/:id', async (req, res) => {
       direccion,
       dias_antelacion_agenda,
       dia_apertura_agenda,
+      acepta_particular,
+      honorarios_particular,
+      mostrar_honorarios,
       especialidades,
       obras_sociales
     } = req.body;
@@ -253,7 +263,10 @@ router.put('/medicos/:id', async (req, res) => {
         biografia = COALESCE(?, biografia),
         direccion = COALESCE(?, direccion),
         dias_antelacion_agenda = COALESCE(?, dias_antelacion_agenda),
-        dia_apertura_agenda = ?
+        dia_apertura_agenda = ?,
+        acepta_particular = COALESCE(?, acepta_particular),
+        honorarios_particular = ?,
+        mostrar_honorarios = COALESCE(?, mostrar_honorarios)
        WHERE id = ? AND rol = 'medico'`,
       [
         nombre,
@@ -266,6 +279,9 @@ router.put('/medicos/:id', async (req, res) => {
         direccion,
         dias_antelacion_agenda,
         dia_apertura_agenda || null,
+        acepta_particular !== undefined ? (acepta_particular ? 1 : 0) : null,
+        honorarios_particular !== undefined ? (honorarios_particular !== '' && honorarios_particular !== null && !isNaN(Number(honorarios_particular)) ? Number(honorarios_particular) : null) : null,
+        mostrar_honorarios !== undefined ? (mostrar_honorarios ? 1 : 0) : null,
         id
       ]
     );

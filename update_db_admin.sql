@@ -21,3 +21,10 @@ CREATE TABLE IF NOT EXISTS medicos_planes (
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
     FOREIGN KEY (plan_id) REFERENCES planes_obras_sociales(id) ON DELETE CASCADE
 );
+
+-- 4. Nuevos campos para atención particular y honorarios del médico
+ALTER TABLE usuarios 
+    ADD COLUMN acepta_particular TINYINT(1) NOT NULL DEFAULT 1,
+    ADD COLUMN honorarios_particular DECIMAL(10,2) NULL DEFAULT NULL,
+    ADD COLUMN mostrar_honorarios TINYINT(1) NOT NULL DEFAULT 0;
+

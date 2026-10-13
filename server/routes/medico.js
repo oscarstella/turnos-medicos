@@ -92,4 +92,70 @@ router.put('/turnos/:id/estado', async (req, res) => {
   }
 });
 
+// Obtener perfil del médico logueado
+router.get('/perfil', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, nombre, apellido, email, dni, matricula, telefono, biografia, direccion,
+              dias_antelacion_agenda, dia_apertura_agenda, acepta_particular, honorarios_particular, mostrar_honorarios
+       FROM usuarios WHERE id = ? AND rol = 'medico' LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Perfil médico no encontrado.' });
+    }
+
+    res.json({ status: 'success', data: rows[0] });
+  } catch (error) {
+    console.error('Error en GET /medico/perfil:', error);
+    res.status(500).json({ status: 'error', message: 'Error al consultar perfil médico.' });
+  }
+});
+
+// Actualizar perfil / honorarios particulares del médico logueado
+router.put('/perfil', async (req, res) => {
+  try {
+    const {
+      telefono,
+      biografia,
+      direccion,
+      acepta_particular,
+      honorarios_particular,
+      mostrar_honorarios,
+      dias_antelacion_agenda,
+      dia_apertura_agenda
+    } = req.body;
+
+    await pool.query(
+      `UPDATE usuarios SET
+        telefono = COALESCE(?, telefono),
+        biografia = COALESCE(?, biografia),
+        direccion = COALESCE(?, direccion),
+        acepta_particular = COALESCE(?, acepta_particular),
+        honorarios_particular = ?,
+        mostrar_honorarios = COALESCE(?, mostrar_honorarios),
+        dias_antelacion_agenda = COALESCE(?, dias_antelacion_agenda),
+        dia_apertura_agenda = COALESCE(?, dia_apertura_agenda)
+       WHERE id = ? AND rol = 'medico'`,
+      [
+        telefono,
+        biografia,
+        direccion,
+        acepta_particular !== undefined ? (acepta_particular ? 1 : 0) : null,
+        honorarios_particular !== undefined ? (honorarios_particular !== '' && honorarios_particular !== null && !isNaN(Number(honorarios_particular)) ? Number(honorarios_particular) : null) : null,
+        mostrar_honorarios !== undefined ? (mostrar_honorarios ? 1 : 0) : null,
+        dias_antelacion_agenda !== undefined ? (dias_antelacion_agenda !== '' ? parseInt(dias_antelacion_agenda, 10) : null) : null,
+        dia_apertura_agenda !== undefined ? (dia_apertura_agenda !== '' ? parseInt(dia_apertura_agenda, 10) : null) : null,
+        req.user.id
+      ]
+    );
+
+    res.json({ status: 'success', message: 'Perfil y honorarios actualizados correctamente.' });
+  } catch (error) {
+    console.error('Error en PUT /medico/perfil:', error);
+    res.status(500).json({ status: 'error', message: 'Error al actualizar perfil médico.' });
+  }
+});
+
 module.exports = router;

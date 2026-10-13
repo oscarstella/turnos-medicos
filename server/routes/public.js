@@ -166,6 +166,7 @@ router.get('/medicos', async (req, res) => {
     let query = `
       SELECT u.id, u.nombre, u.apellido, u.email, u.matricula, u.foto_perfil, u.biografia, u.direccion,
              u.dias_antelacion_agenda, u.dia_apertura_agenda,
+             u.acepta_particular, u.honorarios_particular, u.mostrar_honorarios,
              GROUP_CONCAT(DISTINCT e.id, ':', e.nombre SEPARATOR '||') as especialidades_raw,
              GROUP_CONCAT(DISTINCT ua.id, ':', ua.nombre, ':', COALESCE(ua.calle,''), ' ', COALESCE(ua.numero,'') SEPARATOR '||') as sedes_raw
       FROM usuarios u
@@ -291,6 +292,9 @@ router.get('/medicos', async (req, res) => {
         direccion: med.direccion,
         dias_antelacion_agenda: med.dias_antelacion_agenda,
         dia_apertura_agenda: med.dia_apertura_agenda,
+        acepta_particular: med.acepta_particular !== 0,
+        honorarios_particular: med.honorarios_particular,
+        mostrar_honorarios: !!med.mostrar_honorarios,
         especialidades,
         sedes,
         horarios: horariosByMedico[med.id] || [],
@@ -311,7 +315,8 @@ router.get('/medicos/:id', async (req, res) => {
     const { id } = req.params;
     const [rows] = await pool.query(
       `SELECT id, nombre, apellido, email, matricula, foto_perfil, biografia, direccion,
-              dias_antelacion_agenda, dia_apertura_agenda
+              dias_antelacion_agenda, dia_apertura_agenda,
+              acepta_particular, honorarios_particular, mostrar_honorarios
        FROM usuarios WHERE id = ? AND rol = 'medico' LIMIT 1`,
       [id]
     );
@@ -539,14 +544,16 @@ router.post('/agendar', optionalAuth, async (req, res) => {
     }
 
     let pacienteId = req.user ? req.user.id : null;
+    const finalObraSocialId = (obra_social_id === 'particular' || !obra_social_id) ? null : parseInt(obra_social_id, 10);
+    const finalPlanId = finalObraSocialId && plan_id ? parseInt(plan_id, 10) : null;
 
     // Si no está logueado, buscar o crear al paciente por DNI o Email
     if (!pacienteId) {
-      if (!paciente || !paciente.nombre || !paciente.dni || !paciente.email) {
+      if (!paciente || !paciente.nombre || !paciente.apellido || !paciente.dni || !paciente.email || !paciente.telefono) {
         await connection.rollback();
         return res.status(400).json({
           status: 'error',
-          message: 'Debes proporcionar nombre, apellido, DNI y email del paciente para agendar.'
+          message: 'Todos los campos son obligatorios: Nombre, Apellido, DNI, Correo Electrónico y Teléfono / WhatsApp.'
         });
       }
 
@@ -564,11 +571,13 @@ router.post('/agendar', optionalAuth, async (req, res) => {
         // Actualizar datos de contacto si cambiaron
         await connection.query(
           `UPDATE usuarios SET 
+            nombre = COALESCE(?, nombre),
+            apellido = COALESCE(?, apellido),
             telefono = COALESCE(?, telefono),
-            obra_social_id = COALESCE(?, obra_social_id),
-            plan_id = COALESCE(?, plan_id)
+            obra_social_id = ?,
+            plan_id = ?
            WHERE id = ?`,
-          [paciente.telefono || null, obra_social_id || null, plan_id || null, pacienteId]
+          [paciente.nombre.trim(), (paciente.apellido || '').trim(), paciente.telefono || null, finalObraSocialId, finalPlanId, pacienteId]
         );
       } else {
         // Crear nuevo paciente
@@ -582,8 +591,8 @@ router.post('/agendar', optionalAuth, async (req, res) => {
             cleanEmail,
             paciente.telefono || null,
             paciente.tiene_whatsapp !== false ? 1 : 0,
-            obra_social_id || null,
-            plan_id || null
+            finalObraSocialId,
+            finalPlanId
           ]
         );
         pacienteId = inserted.insertId;
@@ -645,8 +654,8 @@ router.post('/agendar', optionalAuth, async (req, res) => {
         medico_id,
         pacienteId,
         especialidad_id || null,
-        obra_social_id || null,
-        plan_id || null,
+        finalObraSocialId,
+        finalPlanId,
         unidad_id || null,
         fecha,
         hora_inicio,

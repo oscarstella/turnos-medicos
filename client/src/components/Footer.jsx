@@ -51,14 +51,6 @@ export default function Footer() {
               <Clock size={16} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
               <span>Lunes a Viernes: 08:00 a 20:00</span>
             </div>
-            <div className="flex items-center gap-2" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-              <Clock size={16} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
-              <span>Sábados: 09:00 a 13:00</span>
-            </div>
-            <div className="flex items-center gap-2" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-              <Clock size={16} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
-              <span>Domingos: Guardias Pasivas</span>
-            </div>
           </div>
 
           {/* Contacto */}
