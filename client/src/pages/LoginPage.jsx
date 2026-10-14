@@ -195,7 +195,7 @@ export default function LoginPage({ onLoginSuccess, initialRole = 'paciente' }) 
           </h2>
           <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
             {userType === 'medico'
-              ? 'Ingresá con tu DNI o Correo y la contraseña asignada por el Administrador'
+              ? 'Ingresá con tu Usuario, Correo o DNI y la contraseña asignada por el Administrador'
               : (isRegister 
                   ? 'Completa tus datos para gestionar y reservar citas' 
                   : 'Ingresá con tu DNI o Correo Electrónico')}
@@ -217,7 +217,7 @@ export default function LoginPage({ onLoginSuccess, initialRole = 'paciente' }) 
             <strong style={{ color: 'var(--color-primary)', display: 'block', marginBottom: '2px' }}>
               Acceso asignado por Administración:
             </strong>
-            El usuario y la contraseña de los profesionales médicos son adjudicados desde el panel de administración. Si aún no tienes tus credenciales de ingreso, comunícate con la administración de la clínica.
+            El nombre de usuario simple, correo y la contraseña de los profesionales son adjudicados desde el panel de administración. Podés identificarte con cualquiera de ellos o tu DNI.
           </div>
         ) : (
           <div className="flex" style={{ background: 'var(--color-bg)', padding: '4px', borderRadius: '12px', marginBottom: '24px' }}>
@@ -269,13 +269,13 @@ export default function LoginPage({ onLoginSuccess, initialRole = 'paciente' }) 
           /* FORMULARIO LOGIN (Común para Paciente y Médico) */
           <form onSubmit={handleLogin}>
             <div className="form-group">
-              <label className="form-label">DNI o Correo Electrónico</label>
+              <label className="form-label">{userType === 'medico' ? 'Usuario, Correo o DNI' : 'DNI o Correo Electrónico'}</label>
               <div style={{ position: 'relative' }}>
                 <input
                   type="text"
                   className="form-input"
                   required
-                  placeholder={userType === 'medico' ? 'DNI o Correo del profesional' : 'Ej: 38123456 o paciente@email.com'}
+                  placeholder={userType === 'medico' ? 'Usuario simple, correo o DNI del profesional' : 'Ej: 38123456 o paciente@email.com'}
                   value={loginId}
                   onChange={(e) => setLoginId(e.target.value)}
                 />

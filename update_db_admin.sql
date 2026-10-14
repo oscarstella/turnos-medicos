@@ -30,3 +30,9 @@ ALTER TABLE usuarios
     ADD COLUMN slug VARCHAR(120) NULL,
     ADD UNIQUE KEY idx_usuario_slug (slug);
 
+-- 5. Campo username para médicos y usuarios
+ALTER TABLE usuarios 
+    ADD COLUMN username VARCHAR(60) NULL DEFAULT NULL,
+    ADD UNIQUE KEY idx_usuario_username (username);
+
+

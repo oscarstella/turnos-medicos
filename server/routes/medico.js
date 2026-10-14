@@ -135,7 +135,7 @@ router.get('/stats', async (req, res) => {
 router.get('/perfil', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, nombre, apellido, email, dni, matricula, slug, telefono, biografia, direccion,
+      `SELECT id, nombre, apellido, username, email, dni, matricula, slug, telefono, biografia, direccion,
               dias_antelacion_agenda, dia_apertura_agenda, acepta_particular, honorarios_particular, mostrar_honorarios
        FROM usuarios WHERE id = ? AND rol = 'medico' LIMIT 1`,
       [req.user.id]

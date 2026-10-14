@@ -13,31 +13,31 @@ function normalizeDni(dni) {
   return digits.length >= 7 && digits.length <= 9 ? digits : null;
 }
 
-// Iniciar sesión con Email o DNI
+// Iniciar sesión con Email, Usuario simple o DNI
 router.post('/login', async (req, res) => {
   try {
     const { identifier, password } = req.body;
     if (!identifier || !password) {
-      return res.status(400).json({ status: 'error', message: 'Ingresa tu DNI o Correo y tu contraseña.' });
+      return res.status(400).json({ status: 'error', message: 'Ingresa tu usuario, DNI o correo y tu contraseña.' });
     }
 
     const cleanDni = normalizeDni(identifier);
-    const cleanEmail = identifier.trim().toLowerCase();
+    const cleanIdentifier = identifier.trim().toLowerCase();
 
     let query = 'SELECT * FROM usuarios WHERE ';
     const params = [];
 
     if (cleanDni) {
-      query += '(dni = ? OR LOWER(email) = ?) LIMIT 1';
-      params.push(cleanDni, cleanEmail);
+      query += '(dni = ? OR LOWER(email) = ? OR LOWER(username) = ?) LIMIT 1';
+      params.push(cleanDni, cleanIdentifier, cleanIdentifier);
     } else {
-      query += 'LOWER(email) = ? LIMIT 1';
-      params.push(cleanEmail);
+      query += '(LOWER(email) = ? OR LOWER(username) = ?) LIMIT 1';
+      params.push(cleanIdentifier, cleanIdentifier);
     }
 
     const [rows] = await pool.query(query, params);
     if (!rows || rows.length === 0) {
-      return res.status(401).json({ status: 'error', message: 'DNI o correo no registrado.' });
+      return res.status(401).json({ status: 'error', message: 'Usuario, DNI o correo no registrado.' });
     }
 
     const user = rows[0];
@@ -75,6 +75,7 @@ router.post('/login', async (req, res) => {
     const payload = {
       id: user.id,
       email: user.email,
+      username: user.username,
       dni: user.dni,
       nombre: user.nombre,
       apellido: user.apellido,
@@ -89,6 +90,7 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
+        username: user.username,
         nombre: user.nombre,
         apellido: user.apellido,
         dni: user.dni,
@@ -280,7 +282,7 @@ router.post('/register', async (req, res) => {
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT u.id, u.email, u.nombre, u.apellido, u.dni, u.telefono, u.tiene_whatsapp,
+      `SELECT u.id, u.email, u.username, u.nombre, u.apellido, u.dni, u.telefono, u.tiene_whatsapp,
               u.fecha_nacimiento, u.rol, u.obra_social_id, u.plan_id, u.foto_perfil,
               u.biografia, u.direccion, u.matricula, u.dias_antelacion_agenda, u.dia_apertura_agenda,
               u.acepta_particular, u.honorarios_particular, u.mostrar_honorarios, u.slug,

@@ -126,9 +126,9 @@ router.put('/turnos/:id/estado', async (req, res) => {
 router.get('/medicos', async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT u.id, u.nombre, u.apellido, u.email, u.dni, u.telefono, u.matricula, u.foto_perfil,
+      SELECT u.id, u.nombre, u.apellido, u.username, u.email, u.dni, u.telefono, u.matricula, u.foto_perfil,
              u.biografia, u.direccion, u.dias_antelacion_agenda, u.dia_apertura_agenda,
-             u.acepta_particular, u.honorarios_particular, u.mostrar_honorarios,
+             u.acepta_particular, u.honorarios_particular, u.mostrar_honorarios, u.slug,
              GROUP_CONCAT(DISTINCT me.especialidad_id) as especialidades_ids,
              GROUP_CONCAT(DISTINCT e.nombre SEPARATOR ', ') as especialidades_nombres
       FROM usuarios u
@@ -160,6 +160,7 @@ router.post('/medicos', async (req, res) => {
     const {
       nombre,
       apellido,
+      username,
       email,
       dni,
       matricula,
@@ -176,9 +177,28 @@ router.post('/medicos', async (req, res) => {
       obras_sociales = []
     } = req.body;
 
-    if (!nombre || !apellido || !email) {
+    if (!nombre || !apellido || (!email && !username)) {
       await connection.rollback();
-      return res.status(400).json({ status: 'error', message: 'Nombre, apellido y correo son requeridos.' });
+      return res.status(400).json({ status: 'error', message: 'Nombre, apellido y al menos un correo o nombre de usuario son requeridos.' });
+    }
+
+    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : null;
+    const cleanUsername = username && username.trim() ? username.trim().toLowerCase().replace(/\s+/g, '') : null;
+
+    if (cleanEmail) {
+      const [emailRows] = await connection.query('SELECT id FROM usuarios WHERE LOWER(email) = ? LIMIT 1', [cleanEmail]);
+      if (emailRows.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ status: 'error', message: 'El correo electrónico ya está registrado por otra cuenta.' });
+      }
+    }
+
+    if (cleanUsername) {
+      const [usernameRows] = await connection.query('SELECT id FROM usuarios WHERE LOWER(username) = ? LIMIT 1', [cleanUsername]);
+      if (usernameRows.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ status: 'error', message: 'El nombre de usuario ya está registrado por otra cuenta.' });
+      }
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -195,12 +215,13 @@ router.post('/medicos', async (req, res) => {
     }
 
     const [inserted] = await connection.query(
-      `INSERT INTO usuarios (nombre, apellido, email, dni, matricula, contrasena, slug, telefono, biografia, direccion, dias_antelacion_agenda, dia_apertura_agenda, acepta_particular, honorarios_particular, mostrar_honorarios, rol)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medico')`,
+      `INSERT INTO usuarios (nombre, apellido, username, email, dni, matricula, contrasena, slug, telefono, biografia, direccion, dias_antelacion_agenda, dia_apertura_agenda, acepta_particular, honorarios_particular, mostrar_honorarios, rol)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'medico')`,
       [
         nombre.trim(),
         apellido.trim(),
-        email.trim().toLowerCase(),
+        cleanUsername,
+        cleanEmail,
         dni || null,
         matricula || null,
         passHash,
@@ -248,6 +269,7 @@ router.put('/medicos/:id', async (req, res) => {
     const {
       nombre,
       apellido,
+      username,
       email,
       dni,
       matricula,
@@ -264,10 +286,35 @@ router.put('/medicos/:id', async (req, res) => {
       obras_sociales
     } = req.body;
 
+    let cleanUsername = undefined;
+    if (username !== undefined) {
+      cleanUsername = username && username.trim() ? username.trim().toLowerCase().replace(/\s+/g, '') : null;
+      if (cleanUsername) {
+        const [uRows] = await connection.query('SELECT id FROM usuarios WHERE LOWER(username) = ? AND id != ? LIMIT 1', [cleanUsername, id]);
+        if (uRows.length > 0) {
+          await connection.rollback();
+          return res.status(400).json({ status: 'error', message: 'El nombre de usuario ya está registrado por otra cuenta.' });
+        }
+      }
+    }
+
+    let cleanEmail = undefined;
+    if (email !== undefined) {
+      cleanEmail = email && email.trim() ? email.trim().toLowerCase() : null;
+      if (cleanEmail) {
+        const [eRows] = await connection.query('SELECT id FROM usuarios WHERE LOWER(email) = ? AND id != ? LIMIT 1', [cleanEmail, id]);
+        if (eRows.length > 0) {
+          await connection.rollback();
+          return res.status(400).json({ status: 'error', message: 'El correo electrónico ya está registrado por otra cuenta.' });
+        }
+      }
+    }
+
     let updateSql = `UPDATE usuarios SET 
         nombre = COALESCE(?, nombre),
         apellido = COALESCE(?, apellido),
-        email = COALESCE(?, email),
+        username = (CASE WHEN ? = 1 THEN ? ELSE username END),
+        email = (CASE WHEN ? = 1 THEN ? ELSE email END),
         dni = COALESCE(?, dni),
         matricula = COALESCE(?, matricula),
         telefono = COALESCE(?, telefono),
@@ -282,7 +329,10 @@ router.put('/medicos/:id', async (req, res) => {
     const params = [
       nombre,
       apellido,
-      email,
+      cleanUsername !== undefined ? 1 : 0,
+      cleanUsername !== undefined ? cleanUsername : null,
+      cleanEmail !== undefined ? 1 : 0,
+      cleanEmail !== undefined ? cleanEmail : null,
       dni,
       matricula,
       telefono,
@@ -334,38 +384,69 @@ router.put('/medicos/:id', async (req, res) => {
   }
 });
 
-// Asignar o cambiar credenciales de acceso de un médico
+// Asignar o cambiar credenciales de acceso de un médico (usuario, email y/o contraseña)
 router.put('/medicos/:id/credenciales', requireRole(['superadmin', 'admin']), async (req, res) => {
   try {
     const { id } = req.params;
-    const { email, password } = req.body;
+    const { username, email, password } = req.body;
 
-    if (!email || !email.trim()) {
-      return res.status(400).json({ status: 'error', message: 'El usuario / email es requerido.' });
-    }
-    if (!password || password.trim().length < 6) {
-      return res.status(400).json({ status: 'error', message: 'La contraseña debe contener al menos 6 caracteres.' });
-    }
+    const cleanUsername = username && username.trim() ? username.trim().toLowerCase().replace(/\s+/g, '') : null;
+    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : null;
 
-    // Verificar que el email no esté ocupado por otro usuario distinto
-    const [existing] = await pool.query('SELECT id FROM usuarios WHERE email = ? AND id != ?', [email.trim(), id]);
-    if (existing.length > 0) {
-      return res.status(400).json({ status: 'error', message: 'El email / usuario ya está registrado por otra cuenta.' });
+    if (!cleanUsername && !cleanEmail) {
+      return res.status(400).json({ status: 'error', message: 'Debes indicar al menos un nombre de usuario o un correo electrónico.' });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const passHash = await bcrypt.hash(password.trim(), salt);
+    if (cleanUsername) {
+      const [existingUser] = await pool.query('SELECT id FROM usuarios WHERE LOWER(username) = ? AND id != ?', [cleanUsername, id]);
+      if (existingUser.length > 0) {
+        return res.status(400).json({ status: 'error', message: 'El nombre de usuario simple ya está registrado por otra cuenta.' });
+      }
+    }
 
-    const [result] = await pool.query(
-      `UPDATE usuarios SET email = ?, contrasena = ? WHERE id = ? AND rol = 'medico'`,
-      [email.trim(), passHash, id]
-    );
+    if (cleanEmail) {
+      const [existingEmail] = await pool.query('SELECT id FROM usuarios WHERE LOWER(email) = ? AND id != ?', [cleanEmail, id]);
+      if (existingEmail.length > 0) {
+        return res.status(400).json({ status: 'error', message: 'El correo electrónico ya está registrado por otra cuenta.' });
+      }
+    }
 
+    let updateSql = 'UPDATE usuarios SET ';
+    const params = [];
+
+    // Si se envía username (o explícitamente vacío para limpiar), actualizarlo
+    if (username !== undefined) {
+      updateSql += 'username = ?, ';
+      params.push(cleanUsername);
+    }
+
+    // Si se envía email, actualizarlo
+    if (email !== undefined) {
+      updateSql += 'email = ?, ';
+      params.push(cleanEmail);
+    }
+
+    if (password && password.trim() !== '') {
+      if (password.trim().length < 6) {
+        return res.status(400).json({ status: 'error', message: 'La contraseña debe contener al menos 6 caracteres.' });
+      }
+      const salt = await bcrypt.genSalt(10);
+      const passHash = await bcrypt.hash(password.trim(), salt);
+      updateSql += 'contrasena = ?, ';
+      params.push(passHash);
+    }
+
+    // Quitar última coma y espacio
+    updateSql = updateSql.replace(/, $/, '');
+    updateSql += " WHERE id = ? AND rol = 'medico'";
+    params.push(id);
+
+    const [result] = await pool.query(updateSql, params);
     if (result.affectedRows === 0) {
       return res.status(404).json({ status: 'error', message: 'Médico no encontrado.' });
     }
 
-    res.json({ status: 'success', message: 'Credenciales del médico actualizadas correctamente.' });
+    res.json({ status: 'success', message: 'Credenciales del médico (usuario, email y/o contraseña) actualizadas correctamente.' });
   } catch (error) {
     console.error('Error al actualizar credenciales de médico:', error);
     res.status(500).json({ status: 'error', message: 'Error interno al actualizar credenciales.' });
@@ -544,7 +625,7 @@ router.get('/usuarios', async (req, res) => {
   try {
     const { rol, q } = req.query;
     let query = `
-      SELECT id, email, nombre, apellido, dni, telefono, rol, creado_en 
+      SELECT id, email, username, nombre, apellido, dni, telefono, rol, creado_en 
       FROM usuarios WHERE 1=1
     `;
     const params = [];
@@ -554,8 +635,8 @@ router.get('/usuarios', async (req, res) => {
     }
     if (q && q.trim()) {
       const term = `%${q.trim()}%`;
-      query += ' AND (nombre LIKE ? OR apellido LIKE ? OR email LIKE ? OR dni LIKE ?)';
-      params.push(term, term, term, term);
+      query += ' AND (nombre LIKE ? OR apellido LIKE ? OR email LIKE ? OR username LIKE ? OR dni LIKE ?)';
+      params.push(term, term, term, term, term);
     }
     query += ' ORDER BY id DESC LIMIT 150';
 

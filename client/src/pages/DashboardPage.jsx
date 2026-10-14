@@ -55,6 +55,7 @@ export default function DashboardPage() {
   const [medicoForm, setMedicoForm] = useState({
     nombre: '',
     apellido: '',
+    username: '',
     email: '',
     dni: '',
     matricula: '',
@@ -75,7 +76,9 @@ export default function DashboardPage() {
   const [fichaForm, setFichaForm] = useState({
     nombre: '',
     apellido: '',
+    username: '',
     email: '',
+    dni: '',
     matricula: '',
     telefono: '',
     biografia: '',
@@ -104,6 +107,7 @@ export default function DashboardPage() {
 
   // Asignar credenciales a médico (Admin)
   const [credMedicoId, setCredMedicoId] = useState('');
+  const [credUsername, setCredUsername] = useState('');
   const [credEmail, setCredEmail] = useState('');
   const [credPassword, setCredPassword] = useState('');
   const [showCredPassword, setShowCredPassword] = useState(false);
@@ -569,19 +573,20 @@ export default function DashboardPage() {
       alert('Por favor selecciona un profesional de la lista.');
       return;
     }
-    if (!credEmail.trim()) {
-      alert('Por favor ingresa un correo o usuario válido.');
+    if (!credUsername.trim() && !credEmail.trim()) {
+      alert('Por favor ingresa al menos un nombre de usuario o un correo electrónico.');
       return;
     }
-    if (!credPassword.trim() || credPassword.trim().length < 6) {
+    if (credPassword.trim() && credPassword.trim().length < 6) {
       alert('La contraseña debe tener al menos 6 caracteres.');
       return;
     }
     setSavingCred(true);
     try {
       const res = await api.put(`/admin/medicos/${credMedicoId}/credenciales`, {
+        username: credUsername.trim(),
         email: credEmail.trim(),
-        password: credPassword.trim()
+        password: credPassword.trim() ? credPassword.trim() : undefined
       });
       showToast(res.data?.message || 'Credenciales asignadas exitosamente al médico.');
       setCredPassword('');
@@ -642,6 +647,7 @@ export default function DashboardPage() {
     setFichaForm({
       nombre: medico.nombre || '',
       apellido: medico.apellido || '',
+      username: medico.username || '',
       email: medico.email || '',
       dni: medico.dni || '',
       password: '',
@@ -665,7 +671,8 @@ export default function DashboardPage() {
       await api.put(`/admin/medicos/${editingFichaMedico.id}`, {
         nombre: fichaForm.nombre,
         apellido: fichaForm.apellido,
-        email: fichaForm.email,
+        username: fichaForm.username?.trim() ? fichaForm.username.trim() : null,
+        email: fichaForm.email?.trim() ? fichaForm.email.trim() : null,
         dni: fichaForm.dni || null,
         password: fichaForm.password?.trim() ? fichaForm.password.trim() : undefined,
         matricula: fichaForm.matricula,
@@ -1587,6 +1594,11 @@ export default function DashboardPage() {
                     <div>
                       <div style={{ fontWeight: 700 }}>Dr. {m.nombre} {m.apellido}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{m.email}</div>
+                      {m.username && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>
+                          Usuario: <strong>@{m.username}</strong>
+                        </div>
+                      )}
                       {m.matricula && (
                         <div style={{ fontSize: '0.6875rem', color: 'var(--color-text-subtle)' }}>
                           M.N./M.P. {m.matricula}
@@ -1643,6 +1655,7 @@ export default function DashboardPage() {
                       style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       onClick={() => {
                         setCredMedicoId(m.id);
+                        setCredUsername(m.username || '');
                         setCredEmail(m.email || '');
                         setCredPassword('');
                         const el = document.getElementById('seccion-credenciales-medico');
@@ -1684,16 +1697,20 @@ export default function DashboardPage() {
             </div>
 
             <form onSubmit={handleGuardarCredencialesMedico}>
-              <div className="grid grid-cols-3 gap-4" style={{ marginBottom: '16px' }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" style={{ marginBottom: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontWeight: 600 }}>Seleccionar Médico <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                   <SearchableSelect
-                    options={medicos.map(m => ({ id: m.id, label: `Dr. ${m.nombre} ${m.apellido} (${m.email || 'Sin usuario'})` }))}
+                    options={medicos.map(m => ({
+                      id: m.id,
+                      label: `Dr. ${m.nombre} ${m.apellido} (${m.username ? `@${m.username}` : 'Sin usuario'} | ${m.email || 'Sin correo'})`
+                    }))}
                     value={credMedicoId}
                     onChange={(val) => {
                       setCredMedicoId(val);
                       const med = medicos.find(m => String(m.id) === String(val));
                       if (med) {
+                        setCredUsername(med.username || '');
                         setCredEmail(med.email || '');
                         setCredPassword('');
                       }
@@ -1704,25 +1721,40 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontWeight: 600 }}>Usuario / Correo Electrónico <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Nombre Simple de Usuario</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Ej: drperez o bocian"
+                    value={credUsername}
+                    onChange={e => setCredUsername(e.target.value)}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                    Para acceso rápido sin escribir correo.
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Correo Electrónico (Email)</label>
                   <input
                     type="email"
                     className="form-input"
                     placeholder="Ej: doctor@sancarlos.com"
-                    required
                     value={credEmail}
                     onChange={e => setCredEmail(e.target.value)}
                   />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                    Email de notificaciones y login alternativo.
+                  </div>
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontWeight: 600 }}>Nueva Contraseña <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Nueva Contraseña</label>
                   <div style={{ position: 'relative' }}>
                     <input
                       type={showCredPassword ? 'text' : 'password'}
                       className="form-input"
                       placeholder="Mínimo 6 caracteres"
-                      required
                       value={credPassword}
                       onChange={e => setCredPassword(e.target.value)}
                       style={{ paddingRight: '40px' }}
@@ -1744,7 +1776,14 @@ export default function DashboardPage() {
                       {showCredPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                    Vacío = mantiene contraseña actual.
+                  </div>
                 </div>
+              </div>
+
+              <div style={{ padding: '10px 14px', background: 'rgba(2, 132, 199, 0.05)', borderRadius: '10px', border: '1px solid rgba(2, 132, 199, 0.15)', marginBottom: '16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                💡 <strong>Flexibilidad de Acceso:</strong> Podés asignarle al profesional un nombre de usuario simple (ej: <em>drperez</em>), su correo electrónico oficial, o ambos. El médico podrá ingresar en su portal con su usuario simple, correo o DNI.
               </div>
 
               <div className="flex items-center justify-between" style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--color-border)' }}>
@@ -2440,7 +2479,7 @@ export default function DashboardPage() {
                     <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>ID</th>
                     <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Nombre Completo</th>
                     <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>DNI</th>
-                    <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Email</th>
+                    <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Email / Usuario</th>
                     <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Rol Actual</th>
                     <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Asignar Rol</th>
                   </tr>
@@ -2464,6 +2503,11 @@ export default function DashboardPage() {
                         <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>{u.dni || '-'}</td>
                         <td style={{ padding: '12px 14px' }}>
                           <div>{u.email}</div>
+                          {u.username && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>
+                              @{u.username}
+                            </div>
+                          )}
                           {u.email === 'oscarns@gmail.com' && (
                             <span style={{ fontSize: '0.6875rem', color: 'var(--color-primary)', fontWeight: 700 }}>
                               ★ Administrador Principal
@@ -2781,7 +2825,20 @@ export default function DashboardPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
-                  <label className="form-label">Email / Usuario de Acceso <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                  <label className="form-label">Nombre de Usuario Simple (Login)</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Ej: drperez o bocian"
+                    value={medicoForm.username}
+                    onChange={e => setMedicoForm({ ...medicoForm, username: e.target.value })}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                    Para ingresar rápido con su usuario corto.
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email Oficial / Notificaciones <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                   <input
                     type="email"
                     className="form-input"
@@ -2790,7 +2847,13 @@ export default function DashboardPage() {
                     value={medicoForm.email}
                     onChange={e => setMedicoForm({ ...medicoForm, email: e.target.value })}
                   />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                    Correo electrónico institucional o personal.
+                  </div>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
                   <label className="form-label">Matrícula (M.N. / M.P.)</label>
                   <input
@@ -2801,11 +2864,21 @@ export default function DashboardPage() {
                     onChange={e => setMedicoForm({ ...medicoForm, matricula: e.target.value })}
                   />
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Teléfono de Contacto</label>
+                  <input
+                    type="tel"
+                    className="form-input"
+                    placeholder="Ej: 2944123456"
+                    value={medicoForm.telefono}
+                    onChange={e => setMedicoForm({ ...medicoForm, telefono: e.target.value })}
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
-                  <label className="form-label">DNI (Usuario alternativo para login)</label>
+                  <label className="form-label">DNI (Login alternativo)</label>
                   <input
                     type="text"
                     className="form-input"
@@ -3204,28 +3277,38 @@ export default function DashboardPage() {
 
               {/* SECCIÓN CREDENCIALES ADJUDICADAS POR ADMIN */}
               <div style={{
-                padding: '12px',
+                padding: '14px',
                 background: 'rgba(2, 132, 199, 0.04)',
-                borderRadius: '8px',
+                borderRadius: '10px',
                 border: '1px solid rgba(2, 132, 199, 0.2)',
                 marginBottom: '14px'
               }}>
                 <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-primary)', marginBottom: '8px' }}>
-                  Credenciales de Acceso Adjudicadas
+                  Credenciales de Acceso Adjudicadas (Usuario, Email y Contraseña)
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Usuario / Email</label>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Usuario Simple</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ej: drperez"
+                      value={fichaForm.username || ''}
+                      onChange={e => setFichaForm({ ...fichaForm, username: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Correo Electrónico</label>
                     <input
                       type="email"
                       className="form-input"
-                      required
-                      value={fichaForm.email}
+                      placeholder="doctor@clinica.com"
+                      value={fichaForm.email || ''}
                       onChange={e => setFichaForm({ ...fichaForm, email: e.target.value })}
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>DNI (Login alternativo)</label>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>DNI (Login alt.)</label>
                     <input
                       type="text"
                       className="form-input"

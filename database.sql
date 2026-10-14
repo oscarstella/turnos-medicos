@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS planes_obras_sociales (
 CREATE TABLE IF NOT EXISTS usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
     firebase_uid VARCHAR(128) NOT NULL UNIQUE,
+    username VARCHAR(60) NULL UNIQUE,
     email VARCHAR(150) NOT NULL UNIQUE,
     nombre VARCHAR(100) NOT NULL,
     apellido VARCHAR(100) NULL,
