@@ -9,12 +9,186 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 router.use(requireAuth);
 router.use(requireRole(['medico', 'admin', 'superadmin']));
 
-// Agenda del médico por fecha
+// Agenda del médico por fecha (incluye turnos ocupados y slots libres/vacíos)
 router.get('/agenda', async (req, res) => {
   try {
     const medicoId = req.user.rol === 'medico' ? req.user.id : (req.query.medico_id || req.user.id);
-    const { fecha, desde, hasta } = req.query;
+    const { fecha, desde, hasta, estado, q, incluir_vacios = '1' } = req.query;
 
+    // Si viene una fecha puntual (ej: 2026-10-14), generamos la grilla completa con turnos vacíos y ocupados
+    if (fecha && (incluir_vacios === '1' || incluir_vacios === 'true')) {
+      const DIAS_MAP = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+      const targetDate = new Date(fecha + 'T12:00:00Z');
+      const diaNombre = DIAS_MAP[targetDate.getUTCDay()];
+
+      // 1. Verificar suspensión médica
+      const [suspRows] = await pool.query(
+        'SELECT id, motivo FROM medicos_suspensiones WHERE medico_id = ? AND ? BETWEEN fecha_inicio AND fecha_fin LIMIT 1',
+        [medicoId, fecha]
+      );
+      const suspendido = suspRows.length > 0;
+      const motivoSuspension = suspendido ? (suspRows[0].motivo || 'Atención médica suspendida') : null;
+
+      // 2. Horarios semanales configurados para este día
+      const [horarios] = await pool.query(
+        `SELECT hm.id, hm.hora_inicio, hm.hora_fin, hm.duracion_turno_minutos,
+                ua.id as unidad_id, ua.nombre as unidad_nombre, ua.calle, ua.numero
+         FROM horarios_medicos hm
+         LEFT JOIN unidades_atencion ua ON hm.unidad_id = ua.id
+         WHERE hm.medico_id = ? AND hm.dia_semana = ?
+         ORDER BY hm.hora_inicio ASC`,
+        [medicoId, diaNombre]
+      );
+
+      // 3. Turnos reservados para esa fecha
+      let turnosSql = `
+        SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
+               p.id as paciente_id, p.nombre as paciente_nombre, p.apellido as paciente_apellido,
+               p.dni as paciente_dni, p.telefono as paciente_telefono, p.tiene_whatsapp as paciente_whatsapp,
+               p.email as paciente_email,
+               e.nombre as especialidad_nombre,
+               os.nombre as obra_social_nombre,
+               pl.nombre as plan_nombre,
+               ua.id as unidad_id,
+               ua.nombre as unidad_nombre
+        FROM turnos t
+        JOIN usuarios p ON t.paciente_id = p.id
+        LEFT JOIN especialidades e ON t.especialidad_id = e.id
+        LEFT JOIN obras_sociales os ON t.obra_social_id = os.id
+        LEFT JOIN planes_obras_sociales pl ON t.plan_id = pl.id
+        LEFT JOIN unidades_atencion ua ON t.unidad_id = ua.id
+        WHERE t.medico_id = ? AND t.fecha = ?
+      `;
+      const turnosParams = [medicoId, fecha];
+
+      if (q && q.trim()) {
+        const term = `%${q.trim()}%`;
+        turnosSql += ' AND (p.nombre LIKE ? OR p.apellido LIKE ? OR p.dni LIKE ? OR os.nombre LIKE ?)';
+        turnosParams.push(term, term, term, term);
+      }
+
+      turnosSql += ' ORDER BY t.hora_inicio ASC';
+      const [turnosRows] = await pool.query(turnosSql, turnosParams);
+
+      // 4. Mapear turnos ocupados
+      const turnosMap = new Map();
+      const processedTurnoIds = new Set();
+      for (const t of turnosRows) {
+        const key = t.hora_inicio.substring(0, 5);
+        if (!turnosMap.has(key) && t.estado !== 'cancelado') {
+          turnosMap.set(key, t);
+        }
+      }
+
+      const pad = (n) => String(n).padStart(2, '0');
+      const allSlots = [];
+
+      // 5. Generar slots a partir de los bloques de horario
+      for (const h of horarios) {
+        const dur = h.duracion_turno_minutos || 30;
+        let [currentH, currentM] = h.hora_inicio.split(':').map(Number);
+        const [endH, endM] = h.hora_fin.split(':').map(Number);
+        const totalEndMinutes = endH * 60 + endM;
+
+        while (currentH * 60 + currentM < totalEndMinutes) {
+          const slotStart = `${pad(currentH)}:${pad(currentM)}`;
+          let nextM = currentM + dur;
+          let nextH = currentH;
+          if (nextM >= 60) {
+            nextH += Math.floor(nextM / 60);
+            nextM = nextM % 60;
+          }
+          const slotEnd = `${pad(nextH)}:${pad(nextM)}`;
+
+          if (turnosMap.has(slotStart)) {
+            const turno = turnosMap.get(slotStart);
+            processedTurnoIds.add(turno.id);
+            allSlots.push({
+              ...turno,
+              hora_inicio: slotStart,
+              hora_fin: turno.hora_fin ? turno.hora_fin.substring(0, 5) : slotEnd,
+              tipo: 'ocupado',
+              disponible: false,
+              unidad_id: turno.unidad_id || h.unidad_id,
+              unidad_nombre: turno.unidad_nombre || h.unidad_nombre
+            });
+          } else {
+            allSlots.push({
+              id: `vacio_${slotStart}`,
+              fecha: fecha,
+              hora_inicio: slotStart,
+              hora_fin: slotEnd,
+              estado: 'libre',
+              tipo: 'vacio',
+              disponible: true,
+              paciente_id: null,
+              paciente_nombre: null,
+              paciente_apellido: null,
+              paciente_dni: null,
+              paciente_telefono: null,
+              paciente_whatsapp: 0,
+              paciente_email: null,
+              obra_social_nombre: null,
+              plan_nombre: null,
+              unidad_id: h.unidad_id,
+              unidad_nombre: h.unidad_nombre
+            });
+          }
+
+          currentH = nextH;
+          currentM = nextM;
+        }
+      }
+
+      // 6. Añadir turnos que no coincidieron con bloques regulares (sobreturnos o cancelados)
+      for (const t of turnosRows) {
+        if (!processedTurnoIds.has(t.id)) {
+          allSlots.push({
+            ...t,
+            hora_inicio: t.hora_inicio.substring(0, 5),
+            hora_fin: t.hora_fin ? t.hora_fin.substring(0, 5) : null,
+            tipo: t.estado === 'cancelado' ? 'cancelado' : 'ocupado',
+            sobreturno: true,
+            disponible: false
+          });
+        }
+      }
+
+      // Ordenar por hora_inicio ASC
+      allSlots.sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+
+      const ocupadosCount = allSlots.filter(s => s.tipo === 'ocupado').length;
+      const libresCount = allSlots.filter(s => s.tipo === 'vacio').length;
+
+      // Filtrar por estado si se solicitó
+      let filteredSlots = allSlots;
+      if (estado) {
+        if (estado === 'libre' || estado === 'vacio') {
+          filteredSlots = allSlots.filter(s => s.tipo === 'vacio');
+        } else if (estado === 'ocupado') {
+          filteredSlots = allSlots.filter(s => s.tipo === 'ocupado');
+        } else {
+          filteredSlots = allSlots.filter(s => s.estado === estado);
+        }
+      }
+
+      return res.json({
+        status: 'success',
+        data: filteredSlots,
+        meta: {
+          fecha,
+          dia_semana: diaNombre,
+          total_slots: allSlots.length,
+          ocupados: ocupadosCount,
+          libres: libresCount,
+          suspendido,
+          motivo_suspension: motivoSuspension,
+          tiene_bloques: horarios.length > 0
+        }
+      });
+    }
+
+    // Consulta estándar si no hay fecha puntual o no incluye vacíos
     let query = `
       SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
              p.id as paciente_id, p.nombre as paciente_nombre, p.apellido as paciente_apellido,
@@ -41,8 +215,12 @@ router.get('/agenda', async (req, res) => {
       query += ' AND t.fecha BETWEEN ? AND ?';
       params.push(desde, hasta);
     } else {
-      // Por defecto hoy en adelante 7 días
       query += ' AND t.fecha >= CURDATE()';
+    }
+
+    if (estado) {
+      query += ' AND t.estado = ?';
+      params.push(estado);
     }
 
     query += ' ORDER BY t.fecha ASC, t.hora_inicio ASC';
@@ -569,8 +747,19 @@ router.put('/horarios', async (req, res) => {
 // Obtener coberturas (Obras Sociales y Planes) del médico logueado
 router.get('/coberturas', async (req, res) => {
   try {
-    const [osRows] = await pool.query('SELECT obra_social_id FROM medicos_obras_sociales WHERE usuario_id = ?', [req.user.id]);
-    const [planRows] = await pool.query('SELECT plan_id FROM medicos_planes WHERE usuario_id = ?', [req.user.id]);
+    let [osRows] = await pool.query('SELECT obra_social_id FROM medicos_obras_sociales WHERE usuario_id = ?', [req.user.id]);
+    let [planRows] = await pool.query('SELECT plan_id FROM medicos_planes WHERE usuario_id = ?', [req.user.id]);
+
+    // Por default todos los planes y obras sociales marcados si el profesional no tiene guardadas
+    if (osRows.length === 0) {
+      const [allOs] = await pool.query('SELECT id FROM obras_sociales');
+      osRows = allOs.map(r => ({ obra_social_id: r.id }));
+    }
+    if (planRows.length === 0) {
+      const [allPlanes] = await pool.query('SELECT id FROM planes_obras_sociales');
+      planRows = allPlanes.map(r => ({ plan_id: r.id }));
+    }
+
     res.json({
       status: 'success',
       data: {

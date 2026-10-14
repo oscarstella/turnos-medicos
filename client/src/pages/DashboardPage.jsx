@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/SearchableSelect';
+import TimeInput24 from '../components/TimeInput24';
+import DurationPicker5Min from '../components/DurationPicker5Min';
 import { obtenerAvatarDefault } from '../utils/avatar';
 import { 
   Users, 
@@ -173,6 +175,10 @@ export default function DashboardPage() {
   const [loadingDoctorCoberturas, setLoadingDoctorCoberturas] = useState(false);
   const [savingDoctorCoberturas, setSavingDoctorCoberturas] = useState(false);
   const [coberturasSearch, setCoberturasSearch] = useState('');
+  const [coberturasFiltroTipo, setCoberturasFiltroTipo] = useState('todas'); // 'todas', 'marcadas', 'desmarcadas'
+
+  // Metadata y turnos agenda completa (vacíos + ocupados)
+  const [agendaMeta, setAgendaMeta] = useState(null);
 
   // Bot WhatsApp Q&A Tab
   const [botRespuestas, setBotRespuestas] = useState([]);
@@ -216,6 +222,7 @@ export default function DashboardPage() {
     if (filtroFecha) params.append('fecha', filtroFecha);
     if (isDoctor) {
       params.append('medico_id', user.id);
+      params.append('incluir_vacios', '1');
     } else if (filtroMedico) {
       params.append('medico_id', filtroMedico);
     }
@@ -225,7 +232,12 @@ export default function DashboardPage() {
 
     if (isDoctor) {
       api.get(`/medico/agenda?${params.toString()}`)
-        .then(res => setTurnos(res.data?.data || []))
+        .then(res => {
+          setTurnos(res.data?.data || []);
+          if (res.data?.meta) {
+            setAgendaMeta(res.data.meta);
+          }
+        })
         .catch(console.error);
     } else {
       api.get(`/admin/turnos?${params.toString()}`)
@@ -342,14 +354,23 @@ export default function DashboardPage() {
 
       // Cargar todas las obras sociales y las seleccionadas por este médico
       api.get('/public/obras-sociales')
-        .then(res => setCoberturasAllObras(res.data || []))
+        .then(res => {
+          const list = res.data?.data || res.data || [];
+          setCoberturasAllObras(list);
+          setSelectedOSIds(prev => {
+            if (prev.size === 0 && list.length > 0) {
+              return new Set(list.map(o => Number(o.id)));
+            }
+            return prev;
+          });
+        })
         .catch(console.error);
 
       api.get('/medico/coberturas')
         .then(res => {
           const cob = res.data?.data || res.data;
-          if (cob) {
-            setSelectedOSIds(new Set((cob.obras_sociales || []).map(Number)));
+          if (cob && Array.isArray(cob.obras_sociales) && cob.obras_sociales.length > 0) {
+            setSelectedOSIds(new Set(cob.obras_sociales.map(Number)));
             setSelectedPlanIds(new Set((cob.planes || []).map(Number)));
           }
         })
@@ -1281,7 +1302,15 @@ export default function DashboardPage() {
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Estado</label>
               <SearchableSelect
-                options={[
+                options={isDoctor ? [
+                  { id: '', label: 'Todos (Vacíos y Ocupados)' },
+                  { id: 'ocupado', label: 'Solo Ocupados' },
+                  { id: 'libre', label: 'Solo Vacíos / Disponibles' },
+                  { id: 'confirmado', label: 'Confirmado / Asignado' },
+                  { id: 'asistio', label: 'Asistió' },
+                  { id: 'ausente', label: 'Ausente' },
+                  { id: 'cancelado', label: 'Cancelado' }
+                ] : [
                   { id: 'confirmado', label: 'Confirmado / Asignado' },
                   { id: 'asistio', label: 'Asistió' },
                   { id: 'ausente', label: 'Ausente' },
@@ -1306,6 +1335,41 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Métricas y resumen del día para el médico */}
+          {isDoctor && (
+            <div style={{ marginBottom: '20px' }}>
+              <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+                <span className="badge badge-secondary" style={{ fontSize: '0.8125rem', padding: '6px 12px' }}>
+                  Total slots del día: <strong>{agendaMeta?.total_slots ?? turnos.length}</strong>
+                </span>
+                <span className="badge badge-primary" style={{ fontSize: '0.8125rem', padding: '6px 12px' }}>
+                  Ocupados: <strong>{agendaMeta?.ocupados ?? turnos.filter(t => t.tipo === 'ocupado').length}</strong>
+                </span>
+                <span className="badge badge-success" style={{ fontSize: '0.8125rem', padding: '6px 12px', background: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: '1px solid #10b981' }}>
+                  Vacíos / Disponibles: <strong>{agendaMeta?.libres ?? turnos.filter(t => t.tipo === 'vacio' || t.estado === 'libre').length}</strong>
+                </span>
+              </div>
+
+              {agendaMeta?.suspendido && (
+                <div style={{ marginTop: '12px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--color-danger)', borderRadius: '8px', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertTriangle size={18} />
+                  <span>
+                    <strong>Atención médica suspendida para esta fecha:</strong> {agendaMeta.motivo_suspension}
+                  </span>
+                </div>
+              )}
+
+              {agendaMeta && !agendaMeta.tiene_bloques && turnos.length === 0 && (
+                <div style={{ marginTop: '12px', padding: '12px 16px', background: 'rgba(2, 132, 199, 0.08)', border: '1px solid var(--color-primary)', borderRadius: '8px', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Clock size={18} />
+                  <span>
+                    No tenés bloques semanales configurados para los días <strong>{agendaMeta.dia_semana || 'de esta fecha'}</strong>. Podés configurarlos en la pestaña <strong>"Mis Horarios de Atención"</strong>.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {turnos.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-muted)' }}>
               No se encontraron turnos para los filtros seleccionados.
@@ -1325,78 +1389,157 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {turnos.map(t => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                      <td style={{ padding: '12px 14px', fontWeight: 700, color: 'var(--color-primary)' }}>
-                        <div>{t.hora_inicio.substring(0, 5)} hs</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
-                          {formatearFechaArg(t.fecha)}
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 14px', fontWeight: 600 }}>
-                        {t.paciente_nombre} {t.paciente_apellido}
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <div>DNI: {t.paciente_dni || 'Sin DNI'}</div>
-                        {t.paciente_telefono && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                            Tel: {t.paciente_telefono}
+                  {turnos.map((t, idx) => {
+                    const isVacio = t.tipo === 'vacio' || t.estado === 'libre';
+                    return (
+                      <tr
+                        key={t.id || `slot_${idx}`}
+                        style={{
+                          borderBottom: '1px solid var(--color-border)',
+                          background: isVacio ? 'rgba(16, 185, 129, 0.02)' : 'transparent'
+                        }}
+                      >
+                        <td style={{ padding: '12px 14px', fontWeight: 700, color: isVacio ? 'var(--color-success)' : 'var(--color-primary)' }}>
+                          <div className="flex items-center gap-1">
+                            <Clock size={14} style={{ opacity: 0.7 }} />
+                            <span>{t.hora_inicio.substring(0, 5)} hs</span>
+                            {t.hora_fin && (
+                              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--color-text-muted)' }}>
+                                - {t.hora_fin.substring(0, 5)} hs
+                              </span>
+                            )}
                           </div>
-                        )}
-                      </td>
-                      {!isDoctor && (
-                        <td style={{ padding: '12px 14px' }}>
-                          Dr. {t.medico_nombre} {t.medico_apellido}
+                          {t.fecha && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
+                              {formatearFechaArg(t.fecha)}
+                            </div>
+                          )}
                         </td>
-                      )}
-                      <td style={{ padding: '12px 14px' }}>
-                        {t.obra_social_nombre || 'Particular'}
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <span className={`badge ${
-                          t.estado === 'asistio' ? 'badge-success' :
-                          t.estado === 'ausente' ? 'badge-warning' :
-                          t.estado === 'cancelado' ? 'badge-danger' : 'badge-primary'
-                        }`}>
-                          {t.estado}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                        <div className="flex justify-end gap-1">
-                          {t.estado !== 'asistio' && (
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              title="Marcar Asistió"
-                              onClick={() => handleUpdateEstadoTurno(t.id, 'asistio')}
-                              style={{ color: 'var(--color-success)', padding: '4px 8px' }}
-                            >
-                              <CheckCircle size={14} /> Asistió
-                            </button>
+
+                        <td style={{ padding: '12px 14px', fontWeight: isVacio ? 400 : 600 }}>
+                          {isVacio ? (
+                            <span style={{ color: 'var(--color-text-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--color-success)' }}></span>
+                              Turno Disponible (Vacío)
+                            </span>
+                          ) : (
+                            <div>
+                              <div style={{ color: 'var(--color-text-main)' }}>{t.paciente_nombre} {t.paciente_apellido}</div>
+                              {t.notas && (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>
+                                  Nota: {t.notas}
+                                </div>
+                              )}
+                            </div>
                           )}
-                          {t.estado !== 'ausente' && (
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              title="Marcar Ausente"
-                              onClick={() => handleUpdateEstadoTurno(t.id, 'ausente')}
-                              style={{ color: 'var(--color-warning)', padding: '4px 8px' }}
-                            >
-                              Ausente
-                            </button>
+                        </td>
+
+                        <td style={{ padding: '12px 14px' }}>
+                          {isVacio ? (
+                            <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                          ) : (
+                            <div>
+                              <div>DNI: {t.paciente_dni || 'Sin DNI'}</div>
+                              {t.paciente_telefono && (
+                                <div className="flex items-center gap-1" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                                  <span>Tel: {t.paciente_telefono}</span>
+                                  {Boolean(t.paciente_whatsapp) && (
+                                    <a
+                                      href={`https://wa.me/549${String(t.paciente_telefono).replace(/\D/g, '')}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{ color: '#25D366', display: 'inline-flex', alignItems: 'center', marginLeft: '4px' }}
+                                      title="Abrir chat de WhatsApp"
+                                    >
+                                      <MessageSquare size={13} />
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           )}
-                          {t.estado !== 'cancelado' && (
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              title="Cancelar Turno"
-                              onClick={() => handleUpdateEstadoTurno(t.id, 'cancelado')}
-                              style={{ color: 'var(--color-danger)', padding: '4px 8px' }}
-                            >
-                              <XCircle size={14} />
-                            </button>
+                        </td>
+
+                        {!isDoctor && (
+                          <td style={{ padding: '12px 14px' }}>
+                            Dr. {t.medico_nombre} {t.medico_apellido}
+                          </td>
+                        )}
+
+                        <td style={{ padding: '12px 14px' }}>
+                          {isVacio ? (
+                            <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                          ) : (
+                            <div>
+                              <strong style={{ color: 'var(--color-text-main)' }}>{t.obra_social_nombre || 'Particular'}</strong>
+                              {t.plan_nombre && (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                  Plan: {t.plan_nombre}
+                                </div>
+                              )}
+                            </div>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+
+                        <td style={{ padding: '12px 14px' }}>
+                          {isVacio ? (
+                            <span className="badge badge-success" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#059669', border: '1px solid #10b981' }}>
+                              Libre / Vacío
+                            </span>
+                          ) : (
+                            <span className={`badge ${
+                              t.estado === 'asistio' ? 'badge-success' :
+                              t.estado === 'ausente' ? 'badge-warning' :
+                              t.estado === 'cancelado' ? 'badge-danger' : 'badge-primary'
+                            }`}>
+                              {t.estado}
+                            </span>
+                          )}
+                        </td>
+
+                        <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                          {isVacio ? (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              Disponible
+                            </span>
+                          ) : (
+                            <div className="flex justify-end gap-1">
+                              {t.estado !== 'asistio' && (
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  title="Marcar Asistió"
+                                  onClick={() => handleUpdateEstadoTurno(t.id, 'asistio')}
+                                  style={{ color: 'var(--color-success)', padding: '4px 8px' }}
+                                >
+                                  <CheckCircle size={14} /> Asistió
+                                </button>
+                              )}
+                              {t.estado !== 'ausente' && (
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  title="Marcar Ausente"
+                                  onClick={() => handleUpdateEstadoTurno(t.id, 'ausente')}
+                                  style={{ color: 'var(--color-warning)', padding: '4px 8px' }}
+                                >
+                                  Ausente
+                                </button>
+                              )}
+                              {t.estado !== 'cancelado' && (
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  title="Cancelar Turno"
+                                  onClick={() => handleUpdateEstadoTurno(t.id, 'cancelado')}
+                                  style={{ color: 'var(--color-danger)', padding: '4px 8px' }}
+                                >
+                                  <XCircle size={14} />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -2008,31 +2151,94 @@ export default function DashboardPage() {
                 Mis Obras Sociales y Coberturas Médicas
               </h3>
               <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: '4px 0 0' }}>
-                Habilitá o deshabilitá las obras sociales y prepagas con las que trabajás
+                Por default todos los planes y obras sociales están <strong>marcados (activos)</strong>. Destildá aquellos con los que no desees atender.
               </p>
             </div>
-            <button
-              className="btn btn-primary"
-              disabled={savingDoctorCoberturas}
-              onClick={handleSaveDoctorPersonalCoberturas}
-            >
-              {savingDoctorCoberturas ? 'Guardando...' : 'Guardar Mis Coberturas'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                className="btn btn-primary"
+                disabled={savingDoctorCoberturas}
+                onClick={handleSaveDoctorPersonalCoberturas}
+              >
+                {savingDoctorCoberturas ? 'Guardando...' : 'Guardar Mis Coberturas'}
+              </button>
+            </div>
           </div>
 
-          <div style={{ marginBottom: '20px', maxWidth: '360px' }}>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Filtrar obra social..."
-              value={coberturasSearch}
-              onChange={e => setCoberturasSearch(e.target.value)}
-            />
+          {/* Barra de herramientas y filtros */}
+          <div className="flex items-center justify-between gap-4" style={{ marginBottom: '20px', flexWrap: 'wrap' }}>
+            <div className="flex items-center gap-3" style={{ flex: 1, minWidth: '280px', maxWidth: '480px' }}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Buscar obra social o plan (ej: Swiss, OSDE, Galeno)..."
+                value={coberturasSearch}
+                onChange={e => setCoberturasSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setSelectedOSIds(new Set(coberturasAllObras.map(o => Number(o.id))))}
+                title="Marcar todas las obras sociales como aceptadas"
+              >
+                <CheckCircle size={14} style={{ color: 'var(--color-success)' }} /> Marcar Todas
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setSelectedOSIds(new Set())}
+                title="Desmarcar todas"
+              >
+                <XCircle size={14} style={{ color: 'var(--color-danger)' }} /> Desmarcar Todas
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center justify-between" style={{ marginBottom: '16px', padding: '8px 12px', background: 'var(--color-bg)', borderRadius: '8px', fontSize: '0.875rem', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              Habilitadas para atender: <strong style={{ color: 'var(--color-primary)' }}>{selectedOSIds.size}</strong> de <strong>{coberturasAllObras.length}</strong> obras sociales y prepagas
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={`btn btn-sm ${coberturasFiltroTipo === 'todas' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                onClick={() => setCoberturasFiltroTipo('todas')}
+              >
+                Todas ({coberturasAllObras.length})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${coberturasFiltroTipo === 'marcadas' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                onClick={() => setCoberturasFiltroTipo('marcadas')}
+              >
+                Marcadas ({selectedOSIds.size})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${coberturasFiltroTipo === 'desmarcadas' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                onClick={() => setCoberturasFiltroTipo('desmarcadas')}
+              >
+                Desmarcadas ({coberturasAllObras.length - selectedOSIds.size})
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ maxHeight: '600px', overflowY: 'auto', paddingRight: '4px' }}>
             {coberturasAllObras
-              .filter(o => o.nombre.toLowerCase().includes(coberturasSearch.toLowerCase()))
+              .filter(o => {
+                const matchesSearch = !coberturasSearch || o.nombre.toLowerCase().includes(coberturasSearch.toLowerCase());
+                if (!matchesSearch) return false;
+                const isChecked = selectedOSIds.has(Number(o.id));
+                if (coberturasFiltroTipo === 'marcadas') return isChecked;
+                if (coberturasFiltroTipo === 'desmarcadas') return !isChecked;
+                return true;
+              })
               .map(o => {
                 const isChecked = selectedOSIds.has(Number(o.id));
                 return (
@@ -2040,10 +2246,11 @@ export default function DashboardPage() {
                     key={o.id}
                     className="card"
                     style={{
-                      padding: '16px',
+                      padding: '12px 16px',
                       background: isChecked ? 'rgba(2, 132, 199, 0.05)' : 'var(--color-bg)',
                       border: isChecked ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
                     }}
                     onClick={() => {
                       const next = new Set(selectedOSIds);
@@ -2061,7 +2268,7 @@ export default function DashboardPage() {
                         checked={isChecked}
                         onChange={() => {}} // controlado por el card onClick
                       />
-                      <span style={{ fontWeight: isChecked ? 700 : 500, fontSize: '0.9375rem' }}>
+                      <span style={{ fontWeight: isChecked ? 700 : 500, fontSize: '0.9375rem', color: isChecked ? 'var(--color-text-main)' : 'var(--color-text-muted)' }}>
                         {o.nombre}
                       </span>
                     </label>
@@ -2070,7 +2277,10 @@ export default function DashboardPage() {
               })}
           </div>
 
-          <div className="flex justify-end" style={{ marginTop: '24px' }}>
+          <div className="flex justify-between items-center" style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--color-border)' }}>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+              Recordá hacer clic en "Guardar Mis Coberturas" para aplicar los cambios a tu agenda de pacientes.
+            </span>
             <button
               className="btn btn-primary"
               disabled={savingDoctorCoberturas}
@@ -2650,14 +2860,11 @@ export default function DashboardPage() {
 
                       <div className="flex items-center gap-2">
                         <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>De:</span>
-                        <input
-                          type="time"
-                          className="form-input"
-                          style={{ width: '120px' }}
-                          value={b.hora_inicio.substring(0, 5)}
-                          onChange={e => {
+                        <TimeInput24
+                          value={b.hora_inicio}
+                          onChange={newTime => {
                             const updated = [...horariosBloques];
-                            updated[idx].hora_inicio = e.target.value + ':00';
+                            updated[idx].hora_inicio = newTime + ':00';
                             setHorariosBloques(updated);
                           }}
                         />
@@ -2665,14 +2872,11 @@ export default function DashboardPage() {
 
                       <div className="flex items-center gap-2">
                         <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>A:</span>
-                        <input
-                          type="time"
-                          className="form-input"
-                          style={{ width: '120px' }}
-                          value={b.hora_fin.substring(0, 5)}
-                          onChange={e => {
+                        <TimeInput24
+                          value={b.hora_fin}
+                          onChange={newTime => {
                             const updated = [...horariosBloques];
-                            updated[idx].hora_fin = e.target.value + ':00';
+                            updated[idx].hora_fin = newTime + ':00';
                             setHorariosBloques(updated);
                           }}
                         />
@@ -2680,22 +2884,14 @@ export default function DashboardPage() {
 
                       <div className="flex items-center gap-2">
                         <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Turno:</span>
-                        <select
-                          className="form-select"
-                          style={{ width: '110px' }}
+                        <DurationPicker5Min
                           value={b.duracion_turno_minutos}
-                          onChange={e => {
+                          onChange={newDur => {
                             const updated = [...horariosBloques];
-                            updated[idx].duracion_turno_minutos = parseInt(e.target.value, 10);
+                            updated[idx].duracion_turno_minutos = newDur;
                             setHorariosBloques(updated);
                           }}
-                        >
-                          <option value="15">15 min</option>
-                          <option value="20">20 min</option>
-                          <option value="30">30 min</option>
-                          <option value="45">45 min</option>
-                          <option value="60">60 min</option>
-                        </select>
+                        />
                       </div>
 
                       <div style={{ flex: 1 }}>

@@ -247,6 +247,10 @@ router.post('/medicos', async (req, res) => {
     if (Array.isArray(obras_sociales) && obras_sociales.length > 0) {
       const values = obras_sociales.map((osid) => [medicoId, osid]);
       await connection.query('INSERT INTO medicos_obras_sociales (usuario_id, obra_social_id) VALUES ?', [values]);
+    } else {
+      // Por defecto todos los planes y obras sociales habilitados para el médico
+      await connection.query('INSERT IGNORE INTO medicos_obras_sociales (usuario_id, obra_social_id) SELECT ?, id FROM obras_sociales', [medicoId]);
+      await connection.query('INSERT IGNORE INTO medicos_planes (usuario_id, plan_id) SELECT ?, id FROM planes_obras_sociales', [medicoId]);
     }
 
     await connection.commit();
@@ -457,8 +461,19 @@ router.put('/medicos/:id/credenciales', requireRole(['superadmin', 'admin']), as
 router.get('/medicos/:id/coberturas', async (req, res) => {
   try {
     const { id } = req.params;
-    const [osRows] = await pool.query('SELECT obra_social_id FROM medicos_obras_sociales WHERE usuario_id = ?', [id]);
-    const [planRows] = await pool.query('SELECT plan_id FROM medicos_planes WHERE usuario_id = ?', [id]);
+    let [osRows] = await pool.query('SELECT obra_social_id FROM medicos_obras_sociales WHERE usuario_id = ?', [id]);
+    let [planRows] = await pool.query('SELECT plan_id FROM medicos_planes WHERE usuario_id = ?', [id]);
+
+    // Por default todos los planes y obras sociales marcados si no tiene guardadas
+    if (osRows.length === 0) {
+      const [allOs] = await pool.query('SELECT id FROM obras_sociales');
+      osRows = allOs.map(r => ({ obra_social_id: r.id }));
+    }
+    if (planRows.length === 0) {
+      const [allPlanes] = await pool.query('SELECT id FROM planes_obras_sociales');
+      planRows = allPlanes.map(r => ({ plan_id: r.id }));
+    }
+
     res.json({
       status: 'success',
       data: {
