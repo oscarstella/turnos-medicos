@@ -166,7 +166,7 @@ router.get('/medicos', async (req, res) => {
     let query = `
       SELECT u.id, u.nombre, u.apellido, u.email, u.matricula, u.foto_perfil, u.biografia, u.direccion,
              u.dias_antelacion_agenda, u.dia_apertura_agenda,
-             u.acepta_particular, u.honorarios_particular, u.mostrar_honorarios,
+             u.acepta_particular, u.honorarios_particular, u.mostrar_honorarios, u.mensaje_paciente,
              GROUP_CONCAT(DISTINCT e.id, ':', e.nombre SEPARATOR '||') as especialidades_raw,
              GROUP_CONCAT(DISTINCT ua.id, ':', ua.nombre, ':', COALESCE(ua.calle,''), ' ', COALESCE(ua.numero,'') SEPARATOR '||') as sedes_raw
       FROM usuarios u
@@ -319,7 +319,7 @@ router.get('/medicos/:id', async (req, res) => {
     let query = `
       SELECT id, nombre, apellido, email, matricula, foto_perfil, biografia, direccion,
              dias_antelacion_agenda, dia_apertura_agenda,
-             acepta_particular, honorarios_particular, mostrar_honorarios, slug
+             acepta_particular, honorarios_particular, mostrar_honorarios, slug, mensaje_paciente
       FROM usuarios
       WHERE rol = 'medico' AND (
     `;
@@ -426,6 +426,22 @@ router.get('/disponibilidad', async (req, res) => {
     const todayZero = new Date(today.toISOString().split('T')[0] + 'T00:00:00Z');
     if (targetDateZero < todayZero) {
       return res.json({ status: 'success', data: [], slots: [], message: 'La fecha seleccionada ya pasó.' });
+    }
+
+    // Comprobar si la atención médica está suspendida en esta fecha
+    const [suspRows] = await pool.query(
+      'SELECT id, motivo FROM medicos_suspensiones WHERE medico_id = ? AND ? BETWEEN fecha_inicio AND fecha_fin LIMIT 1',
+      [medico_id, fecha]
+    );
+    if (suspRows.length > 0) {
+      const motivoTxt = suspRows[0].motivo ? ` (${suspRows[0].motivo})` : '';
+      return res.json({
+        status: 'success',
+        suspendido: true,
+        motivo: suspRows[0].motivo || null,
+        slots: [],
+        message: `Atención suspendida por el profesional${motivoTxt}.`
+      });
     }
 
     // Si el médico tiene un día fijo de apertura cada mes (ej: día 10), y hoy aún no llegó ese día
@@ -633,6 +649,19 @@ router.post('/agendar', optionalAuth, async (req, res) => {
         finM -= 60;
       }
       calculatedHoraFin = `${String(finH).padStart(2, '0')}:${String(finM).padStart(2, '0')}:00`;
+    }
+
+    // Verificar si la fecha está suspendida para este médico
+    const [suspRows] = await connection.query(
+      'SELECT id, motivo FROM medicos_suspensiones WHERE medico_id = ? AND ? BETWEEN fecha_inicio AND fecha_fin LIMIT 1',
+      [medico_id, fecha]
+    );
+    if (suspRows.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        status: 'error',
+        message: `No es posible agendar: La atención se encuentra suspendida por el profesional${suspRows[0].motivo ? ` (${suspRows[0].motivo})` : ''}.`
+      });
     }
 
     // Comprobar si el turno ya fue reservado (control de concurrencia)

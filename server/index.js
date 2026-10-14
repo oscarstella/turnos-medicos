@@ -17,8 +17,15 @@ const app = express();
 const PORT = process.env.PORT || 5060;
 
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Directorio de uploads para fotos de perfil
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use(['/uploads', '/turnos/uploads', '/api/uploads', '/api/turnos/uploads'], express.static(uploadsDir));
 
 // Health Check
 app.get(['/health', '/api/health', '/api/turnos/health'], (req, res) => {

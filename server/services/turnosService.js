@@ -128,7 +128,7 @@ async function getMedicoDetalle(idOrSlug) {
   let query = `
     SELECT id, nombre, apellido, email, matricula, foto_perfil, biografia, direccion,
            dias_antelacion_agenda, dia_apertura_agenda,
-           acepta_particular, honorarios_particular, mostrar_honorarios, slug
+           acepta_particular, honorarios_particular, mostrar_honorarios, slug, mensaje_paciente
     FROM usuarios
     WHERE rol = 'medico' AND (
   `;
@@ -214,6 +214,22 @@ async function getDisponibilidad(medicoId, fecha) {
   // Fecha en el pasado
   if (fecha < hoy) {
     return { status: 'success', data: [], slots: [], message: 'La fecha seleccionada ya pasó.' };
+  }
+
+  // Comprobar si la atención médica está suspendida en esta fecha
+  const [suspRows] = await pool.query(
+    'SELECT id, motivo FROM medicos_suspensiones WHERE medico_id = ? AND ? BETWEEN fecha_inicio AND fecha_fin LIMIT 1',
+    [medicoId, fecha]
+  );
+  if (suspRows.length > 0) {
+    const motivoTxt = suspRows[0].motivo ? ` (${suspRows[0].motivo})` : '';
+    return {
+      status: 'success',
+      suspendido: true,
+      motivo: suspRows[0].motivo || null,
+      slots: [],
+      message: `Atención suspendida por el profesional${motivoTxt}.`
+    };
   }
 
   // Día fijo de apertura de agenda cada mes
@@ -327,6 +343,15 @@ async function crearTurno(datos, usuarioLogueadoId = null) {
 
     if (!medico_id || !fecha || !hora_inicio) {
       throw new ServiceError(400, 'Faltan datos requeridos (médico, fecha, horario).');
+    }
+
+    // Verificar si la fecha está suspendida para este médico
+    const [suspRows] = await connection.query(
+      'SELECT id, motivo FROM medicos_suspensiones WHERE medico_id = ? AND ? BETWEEN fecha_inicio AND fecha_fin LIMIT 1',
+      [medico_id, fecha]
+    );
+    if (suspRows.length > 0) {
+      throw new ServiceError(400, `No es posible agendar: La atención se encuentra suspendida por el profesional${suspRows[0].motivo ? ` (${suspRows[0].motivo})` : ''}.`);
     }
 
     let pacienteId = usuarioLogueadoId || null;
@@ -544,8 +569,19 @@ async function calcularProximasFechas(medicoId, cantidad = 6) {
   const hoyStr = hoyArgentina();
   const resFechas = [];
 
+  // Obtener fechas suspendidas
+  const [suspList] = await pool.query(
+    'SELECT DATE_FORMAT(fecha_inicio, "%Y-%m-%d") as fecha_inicio, DATE_FORMAT(fecha_fin, "%Y-%m-%d") as fecha_fin FROM medicos_suspensiones WHERE medico_id = ? AND fecha_fin >= ?',
+    [medicoId, hoyStr]
+  );
+
   for (let i = 1; i <= maxDias && resFechas.length < cantidad; i++) {
     const fStr = sumarDias(hoyStr, i);
+
+    // Saltear si la fecha cae en un período suspendido
+    const estaSuspendida = suspList.some(s => fStr >= s.fecha_inicio && fStr <= s.fecha_fin);
+    if (estaSuspendida) continue;
+
     const [y, m, d] = fStr.split('-').map(Number);
     const dateObj = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
     const dayOfWeek = dateObj.getUTCDay();

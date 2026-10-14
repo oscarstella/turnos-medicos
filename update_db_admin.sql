@@ -35,4 +35,21 @@ ALTER TABLE usuarios
     ADD COLUMN username VARCHAR(60) NULL DEFAULT NULL,
     ADD UNIQUE KEY idx_usuario_username (username);
 
+-- 6. Mensaje e instrucciones al paciente y soporte de avatar
+ALTER TABLE usuarios 
+    ADD COLUMN mensaje_paciente TEXT NULL,
+    MODIFY COLUMN foto_perfil MEDIUMTEXT NULL;
+
+-- 7. Tabla para suspensión de turnos por fecha de los médicos
+CREATE TABLE IF NOT EXISTS medicos_suspensiones (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    medico_id INT NOT NULL,
+    fecha_inicio DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    motivo VARCHAR(255) NULL,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_susp_medico FOREIGN KEY (medico_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    KEY idx_susp_medico_fechas (medico_id, fecha_inicio, fecha_fin)
+) ENGINE=InnoDB;
+
 

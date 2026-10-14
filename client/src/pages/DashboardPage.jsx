@@ -29,13 +29,26 @@ import {
   Copy,
   ExternalLink,
   DollarSign,
-  MessageSquare
+  MessageSquare,
+  Upload,
+  Phone,
+  RefreshCw
 } from 'lucide-react';
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'];
 
+function formatearFechaArg(fechaStr) {
+  if (!fechaStr) return '';
+  const clean = String(fechaStr).split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return fechaStr;
+}
+
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [activeTab, setActiveTab] = useState('turnos');
 
   // Stats
@@ -79,10 +92,13 @@ export default function DashboardPage() {
     username: '',
     email: '',
     dni: '',
+    password: '',
     matricula: '',
     telefono: '',
     biografia: '',
     direccion: '',
+    foto_perfil: '',
+    mensaje_paciente: '',
     acepta_particular: true,
     honorarios_particular: '',
     mostrar_honorarios: false,
@@ -90,6 +106,18 @@ export default function DashboardPage() {
     dia_apertura_agenda: ''
   });
   const [savingFicha, setSavingFicha] = useState(false);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+
+  // Suspensión de Turnos (Médico)
+  const [suspensiones, setSuspensiones] = useState([]);
+  const [loadingSuspensiones, setLoadingSuspensiones] = useState(false);
+  const [suspFechaInicio, setSuspFechaInicio] = useState('');
+  const [suspFechaFin, setSuspFechaFin] = useState('');
+  const [suspMotivo, setSuspMotivo] = useState('');
+  const [suspCancelarTurnos, setSuspCancelarTurnos] = useState(true);
+  const [afectadosPreview, setAfectadosPreview] = useState([]);
+  const [loadingAfectados, setLoadingAfectados] = useState(false);
+  const [savingSuspension, setSavingSuspension] = useState(false);
 
   // Obras Sociales & Planes Tab
   const [adminObrasSociales, setAdminObrasSociales] = useState([]);
@@ -273,16 +301,21 @@ export default function DashboardPage() {
       // Cargar ficha y honorarios del médico
       api.get('/medico/perfil')
         .then(res => {
-          if (res.data?.data) {
-            const m = res.data.data;
+          const m = res.data?.data || res.data;
+          if (m && typeof m === 'object' && m.id) {
             setFichaForm({
               nombre: m.nombre || '',
               apellido: m.apellido || '',
+              username: m.username || '',
               email: m.email || '',
+              dni: m.dni || '',
+              password: '',
               matricula: m.matricula || '',
               telefono: m.telefono || '',
               biografia: m.biografia || '',
               direccion: m.direccion || '',
+              foto_perfil: m.foto_perfil || '',
+              mensaje_paciente: m.mensaje_paciente || '',
               acepta_particular: m.acepta_particular !== 0 && m.acepta_particular !== false,
               honorarios_particular: m.honorarios_particular !== null && m.honorarios_particular !== undefined ? m.honorarios_particular : '',
               mostrar_honorarios: !!m.mostrar_honorarios,
@@ -296,12 +329,16 @@ export default function DashboardPage() {
       // Cargar horarios del médico
       api.get('/medico/horarios')
         .then(res => {
-          if (res.data?.data) {
-            setHorariosBloques(res.data.data);
+          const list = res.data?.data || res.data;
+          if (Array.isArray(list)) {
+            setHorariosBloques(list);
             setHorariosMedicoId(user?.id);
           }
         })
         .catch(console.error);
+
+      // Cargar suspensiones del médico
+      fetchSuspensiones();
 
       // Cargar todas las obras sociales y las seleccionadas por este médico
       api.get('/public/obras-sociales')
@@ -310,9 +347,10 @@ export default function DashboardPage() {
 
       api.get('/medico/coberturas')
         .then(res => {
-          if (res.data?.data) {
-            setSelectedOSIds(new Set((res.data.data.obras_sociales || []).map(Number)));
-            setSelectedPlanIds(new Set((res.data.data.planes || []).map(Number)));
+          const cob = res.data?.data || res.data;
+          if (cob) {
+            setSelectedOSIds(new Set((cob.obras_sociales || []).map(Number)));
+            setSelectedPlanIds(new Set((cob.planes || []).map(Number)));
           }
         })
         .catch(console.error);
@@ -324,9 +362,13 @@ export default function DashboardPage() {
       setHorariosMedicoId(user.id);
       api.get('/medico/horarios')
         .then(res => {
-          if (res.data?.data) setHorariosBloques(res.data.data);
+          const list = res.data?.data || res.data;
+          if (Array.isArray(list)) setHorariosBloques(list);
         })
         .catch(console.error);
+    }
+    if (activeTab === 'suspensiones' && isDoctor) {
+      fetchSuspensiones();
     }
   }, [activeTab, isDoctor, user?.id]);
 
@@ -482,12 +524,159 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchSuspensiones = () => {
+    if (!isDoctor) return;
+    setLoadingSuspensiones(true);
+    api.get('/medico/suspensiones')
+      .then(res => {
+        const list = res.data?.data || res.data || [];
+        setSuspensiones(Array.isArray(list) ? list : []);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingSuspensiones(false));
+  };
+
+  const handleConsultarAfectados = (desde, hasta) => {
+    if (!desde || !hasta) {
+      setAfectadosPreview([]);
+      return;
+    }
+    setLoadingAfectados(true);
+    api.get(`/medico/suspensiones/afectados?desde=${desde}&hasta=${hasta}`)
+      .then(res => {
+        const list = res.data?.data || res.data || [];
+        setAfectadosPreview(Array.isArray(list) ? list : []);
+      })
+      .catch(err => {
+        console.error(err);
+        setAfectadosPreview([]);
+      })
+      .finally(() => setLoadingAfectados(false));
+  };
+
+  const handleCrearSuspension = async (e) => {
+    e.preventDefault();
+    if (!suspFechaInicio || !suspFechaFin) {
+      alert('Por favor selecciona fecha de inicio y fin.');
+      return;
+    }
+    if (suspFechaFin < suspFechaInicio) {
+      alert('La fecha de fin no puede ser anterior a la de inicio.');
+      return;
+    }
+    setSavingSuspension(true);
+    try {
+      const res = await api.post('/medico/suspensiones', {
+        fecha_inicio: suspFechaInicio,
+        fecha_fin: suspFechaFin,
+        motivo: suspMotivo || 'Suspensión de atención',
+        cancelar_turnos: suspCancelarTurnos
+      });
+      showToast(res.message || 'Suspensión guardada exitosamente.');
+      fetchSuspensiones();
+      fetchTurnos();
+      handleConsultarAfectados(suspFechaInicio, suspFechaFin);
+      setSuspMotivo('');
+    } catch (err) {
+      alert(err.message || 'Error al registrar suspensión.');
+    } finally {
+      setSavingSuspension(false);
+    }
+  };
+
+  const handleEliminarSuspension = async (id) => {
+    if (!window.confirm('¿Seguro que deseas eliminar esta suspensión y volver a habilitar los turnos para estas fechas?')) return;
+    try {
+      await api.delete(`/medico/suspensiones/${id}`);
+      showToast('Suspensión eliminada con éxito. Las fechas están nuevamente disponibles.');
+      fetchSuspensiones();
+      fetchTurnos();
+      if (suspFechaInicio && suspFechaFin) {
+        handleConsultarAfectados(suspFechaInicio, suspFechaFin);
+      }
+    } catch (err) {
+      alert(err.message || 'Error al eliminar suspensión.');
+    }
+  };
+
+  const handleUploadFoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor selecciona un archivo de imagen válido (JPG, PNG o WEBP).');
+      return;
+    }
+    setSubiendoFoto(true);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const base64 = ev.target.result;
+        const res = await api.post('/medico/foto', { foto: base64 });
+        const newUrl = res.foto_perfil;
+        setFichaForm(prev => ({ ...prev, foto_perfil: newUrl }));
+        showToast('Foto de perfil actualizada correctamente.');
+        if (user) {
+          const updatedUser = { ...user, foto_perfil: newUrl };
+          setUser?.(updatedUser);
+          localStorage.setItem('turnos_user', JSON.stringify(updatedUser));
+        }
+      } catch (err) {
+        alert(err.message || 'Error al subir foto.');
+      } finally {
+        setSubiendoFoto(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveFoto = async () => {
+    if (!window.confirm('¿Deseas quitar tu foto de perfil?')) return;
+    setSubiendoFoto(true);
+    try {
+      await api.post('/medico/foto', { foto: null });
+      setFichaForm(prev => ({ ...prev, foto_perfil: null }));
+      showToast('Foto de perfil eliminada.');
+      if (user) {
+        const updatedUser = { ...user, foto_perfil: null };
+        setUser?.(updatedUser);
+        localStorage.setItem('turnos_user', JSON.stringify(updatedUser));
+      }
+    } catch (err) {
+      alert(err.message || 'Error al quitar foto.');
+    } finally {
+      setSubiendoFoto(false);
+    }
+  };
+
   const handleSaveDoctorPersonalFicha = async (e) => {
     e.preventDefault();
     setSavingFicha(true);
     try {
-      await api.put('/medico/perfil', fichaForm);
-      showToast('Tu ficha profesional y honorarios fueron actualizados correctamente.');
+      const res = await api.put('/medico/perfil', fichaForm);
+      showToast('Tu ficha profesional y perfil fueron actualizados correctamente.');
+      if (res.data) {
+        const m = res.data;
+        setFichaForm(prev => ({
+          ...prev,
+          nombre: m.nombre || '',
+          apellido: m.apellido || '',
+          username: m.username || '',
+          email: m.email || '',
+          dni: m.dni || '',
+          password: '',
+          matricula: m.matricula || '',
+          telefono: m.telefono || '',
+          biografia: m.biografia || '',
+          direccion: m.direccion || '',
+          foto_perfil: m.foto_perfil || '',
+          mensaje_paciente: m.mensaje_paciente || ''
+        }));
+        if (user) {
+          const updatedUser = { ...user, nombre: m.nombre, apellido: m.apellido, username: m.username, email: m.email, foto_perfil: m.foto_perfil };
+          setUser?.(updatedUser);
+          localStorage.setItem('turnos_user', JSON.stringify(updatedUser));
+        }
+      }
       fetchStats();
     } catch (err) {
       showToast(err.message || 'Error al guardar tu perfil.');
@@ -997,8 +1186,9 @@ export default function DashboardPage() {
       <div className="flex gap-2" style={{ borderBottom: '1px solid var(--color-border)', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px' }}>
         {(isDoctor ? [
           { id: 'turnos', label: 'Mi Agenda y Turnos', icon: Calendar },
-          { id: 'ficha', label: 'Mi Ficha & Honorarios', icon: Sparkles },
+          { id: 'ficha', label: 'Mi Ficha & Perfil', icon: Sparkles },
           { id: 'horarios', label: 'Mis Horarios de Atención', icon: Clock },
+          { id: 'suspensiones', label: 'Suspensión de Turnos', icon: AlertTriangle },
           { id: 'coberturas', label: 'Mis Obras Sociales y Coberturas', icon: CreditCard },
           { id: 'link', label: 'Mi Enlace Directo', icon: Eye }
         ] : [
@@ -1138,7 +1328,10 @@ export default function DashboardPage() {
                   {turnos.map(t => (
                     <tr key={t.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                       <td style={{ padding: '12px 14px', fontWeight: 700, color: 'var(--color-primary)' }}>
-                        {t.hora_inicio.substring(0, 5)} hs
+                        <div>{t.hora_inicio.substring(0, 5)} hs</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
+                          {formatearFechaArg(t.fecha)}
+                        </div>
                       </td>
                       <td style={{ padding: '12px 14px', fontWeight: 600 }}>
                         {t.paciente_nombre} {t.paciente_apellido}
@@ -1212,16 +1405,16 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* VISTA DOCTOR: MI PERFIL & HONORARIOS */}
+      {/* VISTA DOCTOR: MI PERFIL, FICHA & HONORARIOS */}
       {isDoctor && activeTab === 'ficha' && (
-        <div className="card" style={{ padding: '28px', maxWidth: '800px', margin: '0 auto' }}>
-          <div className="flex items-center justify-between" style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--color-border)' }}>
+        <div className="card" style={{ padding: '28px', maxWidth: '840px', margin: '0 auto' }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--color-border)' }}>
             <div>
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0, color: 'var(--color-text-main)' }}>
-                Mi Perfil Profesional & Honorarios
+              <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: 'var(--color-text-main)' }}>
+                Mi Ficha Profesional & Perfil
               </h3>
               <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: '4px 0 0' }}>
-                Configurá tu información de contacto, matrícula y atención particular
+                Gestioná tu información personal, foto de perfil, matrícula, contacto y mensajes para tus pacientes
               </p>
             </div>
             <span className="badge badge-primary">
@@ -1230,71 +1423,212 @@ export default function DashboardPage() {
           </div>
 
           <form onSubmit={handleSaveDoctorPersonalFicha}>
+            {/* FOTO DE PERFIL */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '20px',
+              padding: '16px 20px',
+              borderRadius: '12px',
+              background: 'var(--color-bg)',
+              border: '1px solid var(--color-border)',
+              marginBottom: '24px'
+            }}>
+              <div style={{ position: 'relative', width: '84px', height: '84px', flexShrink: 0 }}>
+                <img
+                  src={fichaForm.foto_perfil || obtenerAvatarDefault(fichaForm.nombre, fichaForm.apellido)}
+                  alt="Avatar Médico"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '3px solid var(--color-primary-light)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                  }}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = obtenerAvatarDefault(fichaForm.nombre, fichaForm.apellido);
+                  }}
+                />
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--color-text-main)', marginBottom: '4px' }}>
+                  Foto de Perfil Profesional
+                </div>
+                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '10px' }}>
+                  Subí una foto nítida de tu rostro. Se mostrará en tu agenda pública y en la lista de profesionales.
+                </div>
+                <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+                  <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <Upload size={14} /> {subiendoFoto ? 'Cargando foto...' : 'Subir / Cambiar Foto'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      disabled={subiendoFoto}
+                      onChange={handleUploadFoto}
+                    />
+                  </label>
+
+                  {fichaForm.foto_perfil && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={handleRemoveFoto}
+                      disabled={subiendoFoto}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Trash2 size={14} /> Quitar Foto
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* NOMBRE Y APELLIDO */}
             <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '16px' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">Nombre</label>
+                <label className="form-label">Nombre <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                 <input
                   type="text"
                   className="form-input"
+                  placeholder="Ej: Pablo"
                   value={fichaForm.nombre}
-                  disabled
-                  style={{ background: 'var(--color-bg)', opacity: 0.85 }}
+                  onChange={e => setFichaForm({ ...fichaForm, nombre: e.target.value })}
+                  required
                 />
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">Apellido</label>
+                <label className="form-label">Apellido <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                 <input
                   type="text"
                   className="form-input"
+                  placeholder="Ej: Albano"
                   value={fichaForm.apellido}
-                  disabled
-                  style={{ background: 'var(--color-bg)', opacity: 0.85 }}
+                  onChange={e => setFichaForm({ ...fichaForm, apellido: e.target.value })}
+                  required
                 />
               </div>
             </div>
 
+            {/* USUARIO Y EMAIL */}
             <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '16px' }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Nombre de Usuario (Login)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Ej: palbano"
+                  value={fichaForm.username || ''}
+                  onChange={e => setFichaForm({ ...fichaForm, username: e.target.value })}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                  Permite iniciar sesión sin recordar tu correo.
+                </span>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Correo Electrónico (Email)</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  placeholder="Ej: pablo.albano@sancarlos.com"
+                  value={fichaForm.email || ''}
+                  onChange={e => setFichaForm({ ...fichaForm, email: e.target.value })}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                  Recibirás avisos y notificaciones del sistema.
+                </span>
+              </div>
+            </div>
+
+            {/* DNI Y MATRÍCULA */}
+            <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '16px' }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">DNI</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Ej: 28456789"
+                  value={fichaForm.dni || ''}
+                  onChange={e => setFichaForm({ ...fichaForm, dni: e.target.value })}
+                />
+              </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Matrícula Profesional (M.P. / M.N.)</label>
                 <input
                   type="text"
                   className="form-input"
                   placeholder="Ej: MP 14590"
-                  value={fichaForm.matricula}
+                  value={fichaForm.matricula || ''}
                   onChange={e => setFichaForm({ ...fichaForm, matricula: e.target.value })}
                 />
               </div>
+            </div>
+
+            {/* TELÉFONO Y DIRECCIÓN */}
+            <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '16px' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Teléfono / WhatsApp de Contacto</label>
                 <input
                   type="tel"
                   className="form-input"
                   placeholder="Ej: 2944123456"
-                  value={fichaForm.telefono}
+                  value={fichaForm.telefono || ''}
                   onChange={e => setFichaForm({ ...fichaForm, telefono: e.target.value })}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Dirección / Consultorio de Atención</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Ej: Av. San Martín 450, Consultorio 3"
+                  value={fichaForm.direccion || ''}
+                  onChange={e => setFichaForm({ ...fichaForm, direccion: e.target.value })}
                 />
               </div>
             </div>
 
+            {/* BIOGRAFÍA */}
             <div className="form-group" style={{ marginBottom: '16px' }}>
-              <label className="form-label">Dirección / Consultorio de Atención</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Ej: Av. San Martín 450, Consultorio 3"
-                value={fichaForm.direccion}
-                onChange={e => setFichaForm({ ...fichaForm, direccion: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group" style={{ marginBottom: '20px' }}>
               <label className="form-label">Presentación / Biografía Profesional</label>
               <textarea
                 className="form-input"
                 rows="3"
                 placeholder="Breve descripción de tu trayectoria, especialidad o enfoque de atención..."
-                value={fichaForm.biografia}
+                value={fichaForm.biografia || ''}
                 onChange={e => setFichaForm({ ...fichaForm, biografia: e.target.value })}
+              />
+            </div>
+
+            {/* MENSAJE AL PACIENTE */}
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <MessageSquare size={16} style={{ color: 'var(--color-primary)' }} /> Mensaje e Indicaciones Previas para el Paciente
+              </label>
+              <textarea
+                className="form-input"
+                rows="3"
+                placeholder="Instrucciones para los pacientes al momento de agendar (ej: 'Por favor concurrir con 15 minutos de anticipación, con estudios previos de laboratorio y carnet de obra social')..."
+                value={fichaForm.mensaje_paciente || ''}
+                onChange={e => setFichaForm({ ...fichaForm, mensaje_paciente: e.target.value })}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                Este mensaje se mostrará de manera destacada a los pacientes cuando reserven un turno con vos en la web.
+              </span>
+            </div>
+
+            {/* CAMBIO DE CONTRASEÑA */}
+            <div className="form-group" style={{ marginBottom: '20px', maxWidth: '380px' }}>
+              <label className="form-label">Modificar Contraseña (Opcional)</label>
+              <input
+                type="password"
+                className="form-input"
+                placeholder="Dejar en blanco si no deseas cambiarla"
+                value={fichaForm.password || ''}
+                onChange={e => setFichaForm({ ...fichaForm, password: e.target.value })}
               />
             </div>
 
@@ -1349,7 +1683,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Reglas de antelación */}
+            {/* REGLAS DE ANTELACIÓN */}
             <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '24px' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Antelación de Agenda (Días hacia adelante)</label>
@@ -1382,12 +1716,286 @@ export default function DashboardPage() {
                 type="submit"
                 className="btn btn-primary"
                 disabled={savingFicha}
-                style={{ padding: '10px 24px', fontWeight: 700 }}
+                style={{ padding: '10px 28px', fontWeight: 700 }}
               >
-                {savingFicha ? 'Guardando...' : 'Guardar Mi Perfil y Honorarios'}
+                {savingFicha ? 'Guardando cambios...' : 'Guardar Mi Ficha y Perfil'}
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* VISTA DOCTOR: SUSPENSIÓN DE TURNOS & FECHAS */}
+      {isDoctor && activeTab === 'suspensiones' && (
+        <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* Tarjeta de Nueva Suspensión */}
+          <div className="card" style={{ padding: '28px' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--color-border)' }}>
+              <div>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0, color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertTriangle size={22} /> Suspensión de Turnos y Fechas de Atención
+                </h3>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: '4px 0 0' }}>
+                  Seleccioná el día o período en que no podrás atender (vacaciones, congresos, fuerza mayor). Se bloqueará tu agenda pública y se armará la lista de pacientes a notificar.
+                </p>
+              </div>
+              <span className="badge badge-warning" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
+                Bloqueo de Agenda
+              </span>
+            </div>
+
+            <form onSubmit={handleCrearSuspension}>
+              <div className="grid grid-cols-2 gap-4" style={{ marginBottom: '16px' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700 }}>Fecha Desde</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={suspFechaInicio}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setSuspFechaInicio(val);
+                      if (!suspFechaFin || suspFechaFin < val) setSuspFechaFin(val);
+                      handleConsultarAfectados(val, suspFechaFin || val);
+                    }}
+                    required
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700 }}>Fecha Hasta</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={suspFechaFin}
+                    min={suspFechaInicio || new Date().toISOString().split('T')[0]}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setSuspFechaFin(val);
+                      handleConsultarAfectados(suspFechaInicio, val);
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label">Motivo de la Suspensión (Opcional)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Ej: Congreso Médico, Vacaciones, Motivos de fuerza mayor..."
+                  value={suspMotivo}
+                  onChange={e => setSuspMotivo(e.target.value)}
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label className="flex items-center gap-2" style={{ cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={suspCancelarTurnos}
+                    onChange={e => setSuspCancelarTurnos(e.target.checked)}
+                  />
+                  <span>Cancelar automáticamente los turnos de los pacientes en ese período (se marcan cancelados para liberar el horario y se conserva el listado para avisarles)</span>
+                </label>
+              </div>
+
+              {/* Pacientes Afectados Preview */}
+              {suspFechaInicio && suspFechaFin && (
+                <div style={{
+                  padding: '20px',
+                  borderRadius: '12px',
+                  background: afectadosPreview.length > 0 ? '#fffbeb' : '#f0fdf4',
+                  border: `1px solid ${afectadosPreview.length > 0 ? '#fde68a' : '#bbf7d0'}`,
+                  marginBottom: '20px'
+                }}>
+                  <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.9375rem', color: afectadosPreview.length > 0 ? '#92400e' : '#166534', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {afectadosPreview.length > 0 ? <AlertTriangle size={18} /> : <CheckCircle size={18} />}
+                      {loadingAfectados ? 'Consultando turnos...' : (
+                        afectadosPreview.length > 0
+                          ? `Se encontraron ${afectadosPreview.length} paciente(s) con turnos en este período:`
+                          : 'No hay pacientes con turnos reservados en este rango de fechas.'
+                      )}
+                    </div>
+                  </div>
+
+                  {afectadosPreview.length > 0 && (
+                    <div style={{ overflowX: 'auto', maxHeight: '350px' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', textAlign: 'left', background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
+                        <thead style={{ background: '#fef3c7', borderBottom: '1px solid #fde68a' }}>
+                          <tr>
+                            <th style={{ padding: '8px 12px' }}>Paciente</th>
+                            <th style={{ padding: '8px 12px' }}>Fecha y Hora</th>
+                            <th style={{ padding: '8px 12px' }}>Cobertura</th>
+                            <th style={{ padding: '8px 12px' }}>Teléfono / WhatsApp</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right' }}>Avisar</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {afectadosPreview.map(p => {
+                            const cleanPhone = (p.paciente_telefono || '').replace(/\D+/g, '');
+                            const msgWa = `Hola ${p.paciente_nombre}, nos comunicamos del consultorio del Dr. ${fichaForm.nombre} ${fichaForm.apellido}. Le informamos que por ${suspMotivo ? `motivos de ${suspMotivo}` : 'razones de fuerza mayor'}, su turno programado para el día ${formatearFechaArg(p.fecha)} a las ${p.hora_inicio.substring(0, 5)} hs ha debido suspenderse. Nos pondremos en contacto a la brevedad para coordinar la reprogramación. Sepa disculpar las molestias.`;
+                            const waUrl = cleanPhone ? `https://wa.me/${cleanPhone.startsWith('54') ? cleanPhone : `549${cleanPhone}`}?text=${encodeURIComponent(msgWa)}` : null;
+
+                            return (
+                              <tr key={p.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                <td style={{ padding: '8px 12px', fontWeight: 600 }}>
+                                  {p.paciente_nombre} {p.paciente_apellido}
+                                  {p.paciente_dni && <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>DNI: {p.paciente_dni}</div>}
+                                </td>
+                                <td style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--color-primary)' }}>
+                                  {formatearFechaArg(p.fecha)} - {p.hora_inicio.substring(0, 5)} hs
+                                </td>
+                                <td style={{ padding: '8px 12px' }}>
+                                  {p.obra_social_nombre || 'Particular'}
+                                </td>
+                                <td style={{ padding: '8px 12px' }}>
+                                  {p.paciente_telefono || 'Sin teléfono'}
+                                </td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                                  <div className="flex items-center justify-end gap-1">
+                                    {waUrl ? (
+                                      <a
+                                        href={waUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="btn btn-sm"
+                                        style={{
+                                          background: '#25D366',
+                                          color: 'white',
+                                          fontWeight: 700,
+                                          fontSize: '0.75rem',
+                                          padding: '4px 10px',
+                                          borderRadius: '6px'
+                                        }}
+                                        title="Abrir WhatsApp con mensaje pre-armado"
+                                      >
+                                        <MessageSquare size={13} /> WhatsApp
+                                      </a>
+                                    ) : null}
+
+                                    {p.paciente_telefono && (
+                                      <a
+                                        href={`tel:${p.paciente_telefono}`}
+                                        className="btn btn-sm btn-secondary"
+                                        style={{ fontSize: '0.75rem', padding: '4px 8px', borderRadius: '6px' }}
+                                        title="Llamar al paciente"
+                                      >
+                                        <Phone size={13} /> Llamar
+                                      </a>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="submit"
+                  className="btn btn-danger"
+                  disabled={savingSuspension || !suspFechaInicio || !suspFechaFin}
+                  style={{ padding: '10px 24px', fontWeight: 700 }}
+                >
+                  {savingSuspension ? 'Guardando suspensión...' : 'Confirmar Suspensión y Bloquear Fechas'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Tarjeta de Historial de Suspensiones */}
+          <div className="card" style={{ padding: '28px' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '16px' }}>
+              <div>
+                <h4 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: 'var(--color-text-main)' }}>
+                  Mis Suspensiones Registradas
+                </h4>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: '2px 0 0' }}>
+                  Períodos en que tu agenda permanece bloqueada
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={fetchSuspensiones}
+                disabled={loadingSuspensiones}
+              >
+                <RefreshCw size={14} className={loadingSuspensiones ? 'spin' : ''} /> Actualizar
+              </button>
+            </div>
+
+            {loadingSuspensiones ? (
+              <div style={{ textAlign: 'center', padding: '30px', color: 'var(--color-text-muted)' }}>
+                Cargando suspensiones...
+              </div>
+            ) : suspensiones.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '30px', color: 'var(--color-text-muted)', background: 'var(--color-bg)', borderRadius: '8px' }}>
+                No tenés suspensiones activas registradas. Tu agenda atiende con normalidad en tus días y horarios configurados.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+                  <thead style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
+                    <tr>
+                      <th style={{ padding: '10px 14px' }}>Período Suspendido</th>
+                      <th style={{ padding: '10px 14px' }}>Motivo</th>
+                      <th style={{ padding: '10px 14px' }}>Fecha Registro</th>
+                      <th style={{ padding: '10px 14px', textAlign: 'right' }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {suspensiones.map(s => (
+                      <tr key={s.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <td style={{ padding: '12px 14px', fontWeight: 700, color: 'var(--color-danger)' }}>
+                          {formatearFechaArg(s.fecha_inicio)} al {formatearFechaArg(s.fecha_fin)}
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          {s.motivo || 'Suspensión médica'}
+                        </td>
+                        <td style={{ padding: '12px 14px', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                          {formatearFechaArg(s.creado_en)}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              onClick={() => {
+                                setSuspFechaInicio(s.fecha_inicio);
+                                setSuspFechaFin(s.fecha_fin);
+                                handleConsultarAfectados(s.fecha_inicio, s.fecha_fin);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                              title="Ver pacientes con turnos en este período"
+                            >
+                              <Users size={14} /> Ver Pacientes
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => handleEliminarSuspension(s.id)}
+                              title="Levantar suspensión y reanudar atención"
+                            >
+                              <Trash2 size={14} /> Reanudar Atención
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

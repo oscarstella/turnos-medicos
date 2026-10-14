@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
+const bcrypt = require('bcryptjs');
 const pool = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
@@ -136,7 +139,8 @@ router.get('/perfil', async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, nombre, apellido, username, email, dni, matricula, slug, telefono, biografia, direccion,
-              dias_antelacion_agenda, dia_apertura_agenda, acepta_particular, honorarios_particular, mostrar_honorarios
+              foto_perfil, mensaje_paciente, dias_antelacion_agenda, dia_apertura_agenda, acepta_particular,
+              honorarios_particular, mostrar_honorarios
        FROM usuarios WHERE id = ? AND rol = 'medico' LIMIT 1`,
       [req.user.id]
     );
@@ -152,14 +156,25 @@ router.get('/perfil', async (req, res) => {
   }
 });
 
-// Actualizar perfil / honorarios particulares del médico logueado
+// Actualizar perfil completo del médico logueado (CRUD de su propia ficha)
 router.put('/perfil', async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
+    const medicoId = req.user.id;
     const {
+      nombre,
+      apellido,
+      username,
+      email,
+      dni,
       matricula,
+      password,
       telefono,
       biografia,
       direccion,
+      foto_perfil,
+      mensaje_paciente,
       acepta_particular,
       honorarios_particular,
       mostrar_honorarios,
@@ -167,36 +182,334 @@ router.put('/perfil', async (req, res) => {
       dia_apertura_agenda
     } = req.body;
 
-    await pool.query(
-      `UPDATE usuarios SET
+    // Validar nombre y apellido si se envían
+    if (nombre !== undefined && !nombre.trim()) {
+      await connection.rollback();
+      return res.status(400).json({ status: 'error', message: 'El nombre no puede estar vacío.' });
+    }
+    if (apellido !== undefined && !apellido.trim()) {
+      await connection.rollback();
+      return res.status(400).json({ status: 'error', message: 'El apellido no puede estar vacío.' });
+    }
+
+    // Validar username único si se actualiza
+    let cleanUsername = undefined;
+    if (username !== undefined) {
+      cleanUsername = username && username.trim() ? username.trim().toLowerCase().replace(/\s+/g, '') : null;
+      if (cleanUsername) {
+        const [uRows] = await connection.query('SELECT id FROM usuarios WHERE LOWER(username) = ? AND id != ? LIMIT 1', [cleanUsername, medicoId]);
+        if (uRows.length > 0) {
+          await connection.rollback();
+          return res.status(400).json({ status: 'error', message: 'El nombre de usuario ya está en uso por otra cuenta.' });
+        }
+      }
+    }
+
+    // Validar email único si se actualiza
+    let cleanEmail = undefined;
+    if (email !== undefined) {
+      cleanEmail = email && email.trim() ? email.trim().toLowerCase() : null;
+      if (cleanEmail) {
+        const [eRows] = await connection.query('SELECT id FROM usuarios WHERE LOWER(email) = ? AND id != ? LIMIT 1', [cleanEmail, medicoId]);
+        if (eRows.length > 0) {
+          await connection.rollback();
+          return res.status(400).json({ status: 'error', message: 'El correo electrónico ya está registrado por otra cuenta.' });
+        }
+      }
+    }
+
+    // Validar DNI único si se actualiza
+    if (dni !== undefined && dni && String(dni).trim()) {
+      const cleanDni = String(dni).trim();
+      const [dRows] = await connection.query('SELECT id FROM usuarios WHERE dni = ? AND id != ? LIMIT 1', [cleanDni, medicoId]);
+      if (dRows.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ status: 'error', message: 'El DNI ya se encuentra registrado por otra cuenta.' });
+      }
+    }
+
+    let updateSql = `
+      UPDATE usuarios SET
+        nombre = COALESCE(?, nombre),
+        apellido = COALESCE(?, apellido),
+        username = (CASE WHEN ? = 1 THEN ? ELSE username END),
+        email = (CASE WHEN ? = 1 THEN ? ELSE email END),
+        dni = (CASE WHEN ? = 1 THEN ? ELSE dni END),
         matricula = COALESCE(?, matricula),
         telefono = COALESCE(?, telefono),
         biografia = COALESCE(?, biografia),
         direccion = COALESCE(?, direccion),
+        mensaje_paciente = (CASE WHEN ? = 1 THEN ? ELSE mensaje_paciente END),
+        foto_perfil = (CASE WHEN ? = 1 THEN ? ELSE foto_perfil END),
         acepta_particular = COALESCE(?, acepta_particular),
         honorarios_particular = ?,
         mostrar_honorarios = COALESCE(?, mostrar_honorarios),
         dias_antelacion_agenda = COALESCE(?, dias_antelacion_agenda),
-        dia_apertura_agenda = COALESCE(?, dia_apertura_agenda)
-       WHERE id = ? AND rol = 'medico'`,
-      [
-        matricula,
-        telefono,
-        biografia,
-        direccion,
-        acepta_particular !== undefined ? (acepta_particular ? 1 : 0) : null,
-        honorarios_particular !== undefined ? (honorarios_particular !== '' && honorarios_particular !== null && !isNaN(Number(honorarios_particular)) ? Number(honorarios_particular) : null) : null,
-        mostrar_honorarios !== undefined ? (mostrar_honorarios ? 1 : 0) : null,
-        dias_antelacion_agenda !== undefined ? (dias_antelacion_agenda !== '' ? parseInt(dias_antelacion_agenda, 10) : null) : null,
-        dia_apertura_agenda !== undefined ? (dia_apertura_agenda !== '' ? parseInt(dia_apertura_agenda, 10) : null) : null,
-        req.user.id
-      ]
+        dia_apertura_agenda = ?
+    `;
+
+    const params = [
+      nombre ? nombre.trim() : null,
+      apellido ? apellido.trim() : null,
+      cleanUsername !== undefined ? 1 : 0,
+      cleanUsername !== undefined ? cleanUsername : null,
+      cleanEmail !== undefined ? 1 : 0,
+      cleanEmail !== undefined ? cleanEmail : null,
+      dni !== undefined ? 1 : 0,
+      dni !== undefined ? (dni ? String(dni).trim() : null) : null,
+      matricula !== undefined ? matricula : null,
+      telefono !== undefined ? telefono : null,
+      biografia !== undefined ? biografia : null,
+      direccion !== undefined ? direccion : null,
+      mensaje_paciente !== undefined ? 1 : 0,
+      mensaje_paciente !== undefined ? (mensaje_paciente ? mensaje_paciente.trim() : null) : null,
+      foto_perfil !== undefined ? 1 : 0,
+      foto_perfil !== undefined ? (foto_perfil || null) : null,
+      acepta_particular !== undefined ? (acepta_particular ? 1 : 0) : null,
+      honorarios_particular !== undefined ? (honorarios_particular !== '' && honorarios_particular !== null && !isNaN(Number(honorarios_particular)) ? Number(honorarios_particular) : null) : null,
+      mostrar_honorarios !== undefined ? (mostrar_honorarios ? 1 : 0) : null,
+      dias_antelacion_agenda !== undefined ? (dias_antelacion_agenda !== '' ? parseInt(dias_antelacion_agenda, 10) : null) : null,
+      dia_apertura_agenda !== undefined ? (dia_apertura_agenda !== '' ? parseInt(dia_apertura_agenda, 10) : null) : null
+    ];
+
+    if (password && password.trim()) {
+      const salt = await bcrypt.genSalt(10);
+      const passHash = await bcrypt.hash(password.trim(), salt);
+      updateSql += ', contrasena = ?';
+      params.push(passHash);
+    }
+
+    updateSql += ' WHERE id = ? AND rol = "medico"';
+    params.push(medicoId);
+
+    await connection.query(updateSql, params);
+    await connection.commit();
+
+    // Obtener perfil actualizado para devolverlo al cliente
+    const [updatedRows] = await pool.query(
+      `SELECT id, nombre, apellido, username, email, dni, matricula, slug, telefono, biografia, direccion,
+              foto_perfil, mensaje_paciente, dias_antelacion_agenda, dia_apertura_agenda, acepta_particular,
+              honorarios_particular, mostrar_honorarios
+       FROM usuarios WHERE id = ? LIMIT 1`,
+      [medicoId]
     );
 
-    res.json({ status: 'success', message: 'Perfil y honorarios actualizados correctamente.' });
+    res.json({
+      status: 'success',
+      message: 'Ficha profesional y configuración actualizadas correctamente.',
+      data: updatedRows[0]
+    });
   } catch (error) {
+    await connection.rollback();
     console.error('Error en PUT /medico/perfil:', error);
-    res.status(500).json({ status: 'error', message: 'Error al actualizar perfil médico.' });
+    res.status(500).json({ status: 'error', message: 'Error al actualizar ficha del médico.' });
+  } finally {
+    connection.release();
+  }
+});
+
+// Subir o quitar foto de perfil del médico
+router.post('/foto', async (req, res) => {
+  try {
+    const medicoId = req.user.id;
+    const { foto } = req.body; // base64 data string o null
+
+    if (!foto) {
+      // Eliminar foto de perfil
+      await pool.query('UPDATE usuarios SET foto_perfil = NULL WHERE id = ?', [medicoId]);
+      return res.json({ status: 'success', message: 'Foto de perfil eliminada.', foto_perfil: null });
+    }
+
+    // Si viene en formato data:image/...;base64,...
+    const matches = String(foto).match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return res.status(400).json({ status: 'error', message: 'Formato de imagen inválido. Debe ser una imagen en base64.' });
+    }
+
+    const mimeType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    let ext = 'jpg';
+    if (mimeType.includes('png')) ext = 'png';
+    else if (mimeType.includes('webp')) ext = 'webp';
+    else if (mimeType.includes('jpeg')) ext = 'jpg';
+
+    const uploadsDir = path.join(__dirname, '../uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const filename = `avatar_medico_${medicoId}_${Date.now()}.${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+
+    fs.writeFileSync(filePath, buffer);
+
+    const relativeUrl = `/turnos/uploads/${filename}`;
+    await pool.query('UPDATE usuarios SET foto_perfil = ? WHERE id = ?', [relativeUrl, medicoId]);
+
+    res.json({
+      status: 'success',
+      message: 'Foto de perfil actualizada exitosamente.',
+      foto_perfil: relativeUrl
+    });
+  } catch (error) {
+    console.error('Error al subir foto:', error);
+    res.status(500).json({ status: 'error', message: 'Error al procesar la foto de perfil.' });
+  }
+});
+
+// ==========================================
+// SUSPENSIÓN DE TURNOS / ATENCIÓN MÉDICA
+// ==========================================
+
+// Listar suspensiones del médico
+router.get('/suspensiones', async (req, res) => {
+  try {
+    const medicoId = req.user.id;
+    const [rows] = await pool.query(
+      `SELECT s.id, 
+              DATE_FORMAT(s.fecha_inicio, '%Y-%m-%d') as fecha_inicio,
+              DATE_FORMAT(s.fecha_fin, '%Y-%m-%d') as fecha_fin,
+              s.motivo, s.creado_en
+       FROM medicos_suspensiones s
+       WHERE s.medico_id = ?
+       ORDER BY s.fecha_inicio DESC`,
+      [medicoId]
+    );
+    res.json({ status: 'success', data: rows });
+  } catch (error) {
+    console.error('Error en GET /medico/suspensiones:', error);
+    res.status(500).json({ status: 'error', message: 'Error al consultar suspensiones.' });
+  }
+});
+
+// Consultar pacientes afectados por un rango de fechas a suspender
+router.get('/suspensiones/afectados', async (req, res) => {
+  try {
+    const medicoId = req.user.id;
+    const { desde, hasta } = req.query;
+
+    if (!desde || !hasta) {
+      return res.status(400).json({ status: 'error', message: 'Se requieren parámetros desde y hasta (YYYY-MM-DD).' });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT t.id, 
+              DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha,
+              t.hora_inicio, t.hora_fin, t.estado, t.notas,
+              p.id as paciente_id, p.nombre as paciente_nombre, p.apellido as paciente_apellido,
+              p.dni as paciente_dni, p.telefono as paciente_telefono, p.tiene_whatsapp as paciente_whatsapp,
+              p.email as paciente_email,
+              os.nombre as obra_social_nombre,
+              pl.nombre as plan_nombre,
+              m.nombre as medico_nombre, m.apellido as medico_apellido
+       FROM turnos t
+       JOIN usuarios p ON t.paciente_id = p.id
+       JOIN usuarios m ON t.medico_id = m.id
+       LEFT JOIN obras_sociales os ON t.obra_social_id = os.id
+       LEFT JOIN planes_obras_sociales pl ON t.plan_id = pl.id
+       WHERE t.medico_id = ? 
+         AND t.fecha BETWEEN ? AND ? 
+         AND t.estado NOT IN ('cancelado', 'libre')
+       ORDER BY t.fecha ASC, t.hora_inicio ASC`,
+      [medicoId, desde, hasta]
+    );
+
+    res.json({ status: 'success', data: rows, total: rows.length });
+  } catch (error) {
+    console.error('Error en GET /medico/suspensiones/afectados:', error);
+    res.status(500).json({ status: 'error', message: 'Error al consultar turnos afectados.' });
+  }
+});
+
+// Crear nueva suspensión de turnos y opcionalmente cancelar/marcar los turnos
+router.post('/suspensiones', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const medicoId = req.user.id;
+    const { fecha_inicio, fecha_fin, motivo, cancelar_turnos = true } = req.body;
+
+    if (!fecha_inicio || !fecha_fin) {
+      await connection.rollback();
+      return res.status(400).json({ status: 'error', message: 'Fecha de inicio y fin son requeridas.' });
+    }
+
+    if (fecha_fin < fecha_inicio) {
+      await connection.rollback();
+      return res.status(400).json({ status: 'error', message: 'La fecha de fin no puede ser anterior a la de inicio.' });
+    }
+
+    // Insertar registro de suspensión
+    const [result] = await connection.query(
+      `INSERT INTO medicos_suspensiones (medico_id, fecha_inicio, fecha_fin, motivo)
+       VALUES (?, ?, ?, ?)`,
+      [medicoId, fecha_inicio, fecha_fin, motivo || 'Suspensión de atención por el profesional']
+    );
+
+    const suspensionId = result.insertId;
+
+    // Obtener turnos afectados
+    const [afectados] = await connection.query(
+      `SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado,
+              p.nombre as paciente_nombre, p.apellido as paciente_apellido, p.telefono as paciente_telefono
+       FROM turnos t
+       JOIN usuarios p ON t.paciente_id = p.id
+       WHERE t.medico_id = ? 
+         AND t.fecha BETWEEN ? AND ? 
+         AND t.estado NOT IN ('cancelado', 'libre')`,
+      [medicoId, fecha_inicio, fecha_fin]
+    );
+
+    // Si se indicó cancelar los turnos automáticamente
+    if (cancelar_turnos && afectados.length > 0) {
+      const notaCancel = motivo ? `Suspendido por el profesional: ${motivo}` : 'Atención suspendida por el profesional';
+      await connection.query(
+        `UPDATE turnos 
+         SET estado = 'cancelado', notas = CONCAT(COALESCE(notas, ''), ' [', ?, ']')
+         WHERE medico_id = ? AND fecha BETWEEN ? AND ? AND estado NOT IN ('cancelado', 'libre')`,
+        [notaCancel, medicoId, fecha_inicio, fecha_fin]
+      );
+    }
+
+    await connection.commit();
+
+    res.status(201).json({
+      status: 'success',
+      message: `Suspensión registrada exitosamente. Se identificaron ${afectados.length} turno(s) en ese período.`,
+      suspension_id: suspensionId,
+      afectados_count: afectados.length,
+      afectados
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error al registrar suspensión:', error);
+    res.status(500).json({ status: 'error', message: 'Error al registrar la suspensión.' });
+  } finally {
+    connection.release();
+  }
+});
+
+// Eliminar / levantar suspensión de turnos
+router.delete('/suspensiones/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const medicoId = req.user.id;
+
+    const [result] = await pool.query(
+      'DELETE FROM medicos_suspensiones WHERE id = ? AND medico_id = ?',
+      [id, medicoId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ status: 'error', message: 'Suspensión no encontrada o no pertenece a este profesional.' });
+    }
+
+    res.json({ status: 'success', message: 'La suspensión fue eliminada. Las fechas vuelven a estar habilitadas en tu agenda.' });
+  } catch (error) {
+    console.error('Error al eliminar suspensión:', error);
+    res.status(500).json({ status: 'error', message: 'Error al eliminar la suspensión.' });
   }
 });
 

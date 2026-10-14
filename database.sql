@@ -48,11 +48,12 @@ CREATE TABLE IF NOT EXISTS usuarios (
     rol ENUM('superadmin','admin','recepcionista','medico','paciente') NOT NULL DEFAULT 'paciente',
     obra_social_id INT NULL,
     plan_id INT NULL,
-    foto_perfil VARCHAR(255) NULL,
+    foto_perfil MEDIUMTEXT NULL,
     biografia TEXT NULL,
     direccion VARCHAR(255) NULL,
     matricula VARCHAR(100) NULL,
     contrasena VARCHAR(255) NULL,
+    mensaje_paciente TEXT NULL,
     dias_antelacion_agenda INT NULL DEFAULT NULL,
     dia_apertura_agenda INT NULL DEFAULT NULL,
     acepta_particular TINYINT(1) NOT NULL DEFAULT 1,
@@ -130,6 +131,17 @@ CREATE TABLE IF NOT EXISTS turnos (
 CREATE TABLE IF NOT EXISTS configuracion (
     clave VARCHAR(100) PRIMARY KEY,
     valor VARCHAR(255) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS medicos_suspensiones (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    medico_id INT NOT NULL,
+    fecha_inicio DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    motivo VARCHAR(255) NULL,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_susp_medico FOREIGN KEY (medico_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    KEY idx_susp_medico_fechas (medico_id, fecha_inicio, fecha_fin)
 ) ENGINE=InnoDB;
 
 INSERT IGNORE INTO especialidades (nombre) VALUES ('Fonoaudiología'),('Kinesiología'),('Psicología'),('Medicina General');

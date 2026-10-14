@@ -14,7 +14,8 @@ import {
   Phone, 
   Mail, 
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Info
 } from 'lucide-react';
 
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -45,6 +46,7 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotMessage, setSlotMessage] = useState('');
+  const [suspendidoAviso, setSuspendidoAviso] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
 
   // Modal de confirmación
@@ -120,15 +122,22 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
       .then((res) => {
         if (res.agenda_cerrada) {
           setAgendaCerradaAviso(res.dia_apertura);
+          setSuspendidoAviso(null);
+          setSlots([]);
+        } else if (res.suspendido) {
+          setSuspendidoAviso(res.message || 'Atención suspendida por el profesional en esta fecha.');
+          setAgendaCerradaAviso(null);
           setSlots([]);
         } else if (res.slots) {
           setAgendaCerradaAviso(null);
+          setSuspendidoAviso(null);
           setSlots(res.slots);
           setSlotMessage(res.message || '');
         }
       })
       .catch((err) => {
         setSlots([]);
+        setSuspendidoAviso(null);
         setSlotMessage(err.message || 'No se pudo consultar la disponibilidad.');
       })
       .finally(() => setLoadingSlots(false));
@@ -413,6 +422,26 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
                 </p>
               </div>
             )}
+
+            {/* Mensaje e Indicaciones al Paciente */}
+            {(doctor.mensaje_paciente || doctorDetail?.mensaje_paciente) && (
+              <div style={{ textAlign: 'left', borderTop: '1px solid var(--color-border)', paddingTop: '16px', marginTop: '16px' }}>
+                <div style={{
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  background: 'rgba(2, 132, 199, 0.08)',
+                  border: '1px solid rgba(2, 132, 199, 0.25)',
+                  fontSize: '0.8125rem',
+                  color: 'var(--color-primary-dark)',
+                  lineHeight: 1.5
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Info size={15} /> Indicaciones para la Consulta
+                  </div>
+                  {doctor.mensaje_paciente || doctorDetail?.mensaje_paciente}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Columna Derecha: Selector de Fecha y Slots */}
@@ -429,6 +458,23 @@ export default function AgendarPage({ doctor, onBack, onBookingSuccess }) {
                     </h4>
                     <p style={{ fontSize: '0.875rem', color: '#b45309', margin: 0, lineHeight: 1.5 }}>
                       La agenda de turnos para este profesional se abre a partir del <strong>día {diaApertura || agendaCerradaAviso} de cada mes</strong>. Por favor, vuelve a ingresar en esa fecha para seleccionar tu turno.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Aviso si la fecha elegida está suspendida por el médico */}
+            {suspendidoAviso && (
+              <div className="card" style={{ marginBottom: '24px', padding: '24px', borderLeft: '4px solid #ef4444', background: '#fef2f2' }}>
+                <div className="flex items-start gap-3">
+                  <AlertCircle size={24} style={{ color: '#ef4444', flexShrink: 0, marginTop: '2px' }} />
+                  <div>
+                    <h4 style={{ fontSize: '1.0625rem', fontWeight: 700, color: '#991b1b', marginBottom: '4px' }}>
+                      Atención suspendida por el profesional
+                    </h4>
+                    <p style={{ fontSize: '0.875rem', color: '#b91c1c', margin: 0, lineHeight: 1.5 }}>
+                      {suspendidoAviso} Por favor, seleccioná otra fecha disponible en el calendario.
                     </p>
                   </div>
                 </div>
