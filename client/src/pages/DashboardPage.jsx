@@ -752,7 +752,8 @@ export default function DashboardPage() {
         hora_inicio: '09:00:00',
         hora_fin: '13:00:00',
         duracion_turno_minutos: 30,
-        unidad_id: sedes[0]?.id || null
+        unidad_id: sedes[0]?.id || null,
+        consultorio: ''
       }
     ]);
   };
@@ -1384,6 +1385,7 @@ export default function DashboardPage() {
                     <th style={{ padding: '12px 14px' }}>DNI / Contacto</th>
                     {!isDoctor && <th style={{ padding: '12px 14px' }}>Profesional</th>}
                     <th style={{ padding: '12px 14px' }}>Cobertura</th>
+                    <th style={{ padding: '12px 14px' }}>Centro / Cons.</th>
                     <th style={{ padding: '12px 14px' }}>Estado</th>
                     <th style={{ padding: '12px 14px', textAlign: 'right' }}>Acciones Rápidas</th>
                   </tr>
@@ -1478,6 +1480,17 @@ export default function DashboardPage() {
                                 </div>
                               )}
                             </div>
+                          )}
+                        </td>
+
+                        <td style={{ padding: '12px 14px' }}>
+                          <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text-main)' }}>
+                            {t.unidad_nombre || 'Centro no asignado'}
+                          </div>
+                          {t.consultorio && (
+                            <span className="badge badge-secondary" style={{ fontSize: '0.75rem', padding: '2px 6px', marginTop: '3px', display: 'inline-block' }}>
+                              Cons. {t.consultorio}
+                            </span>
                           )}
                         </td>
 
@@ -2894,7 +2907,8 @@ export default function DashboardPage() {
                         />
                       </div>
 
-                      <div style={{ flex: 1 }}>
+                      {/* Selector de Centro / Sede */}
+                      <div style={{ flex: 1, minWidth: '170px' }}>
                         <select
                           className="form-select"
                           value={b.unidad_id || ''}
@@ -2903,10 +2917,31 @@ export default function DashboardPage() {
                             updated[idx].unidad_id = e.target.value ? parseInt(e.target.value, 10) : null;
                             setHorariosBloques(updated);
                           }}
+                          title="Seleccionar Centro o Sede médica de atención"
                         >
-                          <option value="">Consultorio no asignado</option>
+                          <option value="">Centro no asignado</option>
                           {sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                         </select>
+                      </div>
+
+                      {/* Consultorio (Opcional, 2 o 3 dígitos) */}
+                      <div className="flex items-center gap-1" style={{ width: '120px' }}>
+                        <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Cons:</span>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="N° (opc.)"
+                          maxLength={3}
+                          value={b.consultorio || ''}
+                          onChange={e => {
+                            const val = e.target.value.replace(/[^0-9a-zA-Z]/g, '').slice(0, 3);
+                            const updated = [...horariosBloques];
+                            updated[idx].consultorio = val;
+                            setHorariosBloques(updated);
+                          }}
+                          style={{ width: '70px', padding: '6px 8px', textAlign: 'center', fontSize: '0.875rem' }}
+                          title="Número de consultorio (opcional, hasta 3 dígitos)"
+                        />
                       </div>
 
                       <button

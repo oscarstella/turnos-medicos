@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS horarios_medicos (
     hora_fin TIME NOT NULL,
     duracion_turno_minutos INT NOT NULL DEFAULT 30,
     unidad_id INT NULL,
+    consultorio VARCHAR(20) NULL,
     CONSTRAINT fk_horario_medico FOREIGN KEY (medico_id) REFERENCES usuarios(id) ON DELETE CASCADE,
     CONSTRAINT fk_horario_unidad FOREIGN KEY (unidad_id) REFERENCES unidades_atencion(id) ON DELETE SET NULL,
     KEY idx_horarios_medico_dia (medico_id,dia_semana,hora_inicio)
@@ -111,6 +112,7 @@ CREATE TABLE IF NOT EXISTS turnos (
     obra_social_id INT NULL,
     plan_id INT NULL,
     unidad_id INT NULL,
+    consultorio VARCHAR(20) NULL,
     fecha DATE NOT NULL,
     hora_inicio TIME NOT NULL,
     hora_fin TIME NOT NULL,

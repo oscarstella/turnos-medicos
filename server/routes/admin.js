@@ -541,7 +541,7 @@ router.get('/horarios/:medicoId', async (req, res) => {
   try {
     const { medicoId } = req.params;
     const [rows] = await pool.query(
-      `SELECT id, dia_semana, hora_inicio, hora_fin, duracion_turno_minutos, unidad_id
+      `SELECT id, dia_semana, hora_inicio, hora_fin, duracion_turno_minutos, unidad_id, consultorio
        FROM horarios_medicos WHERE medico_id = ?
        ORDER BY FIELD(dia_semana, 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo'), hora_inicio ASC`,
       [medicoId]
@@ -570,11 +570,12 @@ router.put('/horarios/:medicoId', async (req, res) => {
         b.hora_inicio,
         b.hora_fin,
         b.duracion_turno_minutos || 30,
-        b.unidad_id || null
+        b.unidad_id || null,
+        b.consultorio ? String(b.consultorio).trim().slice(0, 10) : null
       ]);
 
       await connection.query(
-        'INSERT INTO horarios_medicos (medico_id, dia_semana, hora_inicio, hora_fin, duracion_turno_minutos, unidad_id) VALUES ?',
+        'INSERT INTO horarios_medicos (medico_id, dia_semana, hora_inicio, hora_fin, duracion_turno_minutos, unidad_id, consultorio) VALUES ?',
         [values]
       );
     }
