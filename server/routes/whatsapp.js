@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const { execFile } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const {
   normalizeDni,
   getMedicoDetalle,
@@ -54,7 +57,8 @@ async function checkCustomTrigger(userText) {
     const lower = (userText || '').toLowerCase().trim();
     for (const r of rows) {
       if (!r.disparador) continue;
-      const keywords = r.disparador.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+      const dispStr = typeof r.disparador === 'string' ? r.disparador : String(r.disparador || '');
+      const keywords = dispStr.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
       if (keywords.some(k => lower === k || lower.includes(k))) {
         return r.mensaje;
       }
@@ -63,6 +67,68 @@ async function checkCustomTrigger(userText) {
     console.warn('Error en checkCustomTrigger:', err.message);
   }
   return null;
+}
+
+/**
+ * Descarga y transcribe un mensaje de voz o audio de WhatsApp usando Whisper local
+ */
+async function procesarAudioWhatsApp(mediaId) {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!token) {
+    console.error('❌ Falta WHATSAPP_ACCESS_TOKEN para descargar audio');
+    return '';
+  }
+
+  try {
+    // 1. Obtener URL de descarga desde Meta Graph API
+    const metaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!metaRes.ok) {
+      console.warn('⚠️ No se pudo obtener la URL del audio desde Meta:', await metaRes.text());
+      return '';
+    }
+    const metaData = await metaRes.json();
+    const downloadUrl = metaData.url;
+    if (!downloadUrl) return '';
+
+    // 2. Descargar el archivo binario del audio (.ogg)
+    const audioRes = await fetch(downloadUrl, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!audioRes.ok) {
+      console.warn('⚠️ No se pudo descargar el binario del audio desde Meta');
+      return '';
+    }
+
+    const arrayBuffer = await audioRes.arrayBuffer();
+    const tempOgg = path.join('/tmp', `wa_voice_${Date.now()}_${Math.random().toString(36).substring(7)}.ogg`);
+    fs.writeFileSync(tempOgg, Buffer.from(arrayBuffer));
+
+    // 3. Ejecutar transcribe.sh con whisper.cpp
+    const scriptPath = fs.existsSync('/opt/whisper.cpp/transcribe.sh') ? '/opt/whisper.cpp/transcribe.sh' : null;
+    if (!scriptPath) {
+      console.warn('⚠️ transcribe.sh no encontrado en /opt/whisper.cpp/transcribe.sh');
+      try { fs.unlinkSync(tempOgg); } catch (e) {}
+      return '';
+    }
+
+    const text = await new Promise((resolve) => {
+      execFile('/bin/bash', [scriptPath, tempOgg], (err, stdout, stderr) => {
+        try { fs.unlinkSync(tempOgg); } catch (e) {}
+        if (err) {
+          console.error('❌ Error ejecutando Whisper:', err.message);
+          return resolve('');
+        }
+        resolve((stdout || '').trim());
+      });
+    });
+
+    return text;
+  } catch (err) {
+    console.error('❌ Error en procesarAudioWhatsApp:', err.message);
+    return '';
+  }
 }
 
 /**
@@ -178,6 +244,13 @@ router.post('/webhook', async (req, res) => {
           userText = (message.text?.body || '').trim();
         } else if (messageType === 'interactive') {
           userText = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || '';
+        } else if (messageType === 'audio' || messageType === 'voice') {
+          const mediaId = message.audio?.id || message.voice?.id;
+          if (mediaId) {
+            console.log(`🎙️ [AUDIO ENTRANTE] De: ${from} | Procesando mensaje de voz ID: ${mediaId}...`);
+            userText = await procesarAudioWhatsApp(mediaId);
+            console.log(`📝 [AUDIO TRANSCRIPTO] Texto detectado: "${userText}"`);
+          }
         }
 
         if (!userText) {
@@ -197,8 +270,23 @@ router.post('/webhook', async (req, res) => {
  * Flujo conversacional interactivo completo
  */
 async function handleIncomingUserMessage(phone, text) {
-  const cleanInput = text.trim();
-  const lowerInput = cleanInput.toLowerCase();
+  let cleanInput = (text || '').trim();
+  // Limpiar puntos o signos que a veces agrega la transcripción al final
+  cleanInput = cleanInput.replace(/[.,;:!?]+$/, '').trim();
+  let lowerInput = cleanInput.toLowerCase();
+
+  // Mapeo automático de números hablados
+  const wordsToNumbers = {
+    'uno': '1', 'primero': '1', 'primera': '1',
+    'dos': '2', 'segundo': '2', 'segunda': '2',
+    'tres': '3', 'tercero': '3', 'tercera': '3',
+    'cuatro': '4', 'cuarto': '4', 'cuarta': '4',
+    'cinco': '5', 'quinto': '5', 'quinta': '5'
+  };
+  if (wordsToNumbers[lowerInput]) {
+    cleanInput = wordsToNumbers[lowerInput];
+    lowerInput = cleanInput;
+  }
 
   let session = userSessions.get(phone);
   if (!session) {
@@ -221,6 +309,39 @@ async function handleIncomingUserMessage(phone, text) {
   if (session.step !== 'INIT' && (lowerInput === 'cancelar' || lowerInput === 'salir')) {
     session.step = 'INIT';
     return await sendWhatsAppMessage(phone, '❌ Operación cancelada.\n\nEscribí *menu* cuando desees volver a comenzar.');
+  }
+
+  // =========================================================================
+  // RESPUESTA A RECORDATORIO DE 48HS (1: Confirmar / 2: Cancelar)
+  // =========================================================================
+  if (session.step === 'AWAIT_REMINDER_CONFIRMATION') {
+    if (cleanInput === '1') {
+      try {
+        await pool.query("UPDATE turnos SET estado = 'confirmado' WHERE id = ?", [session.turnoId]);
+        session.step = 'INIT';
+        const t = session.turno;
+        const msgOk = await getBotMessage(
+          'recordatorio_confirmado_exito',
+          '✅ *¡Muchas gracias {paciente_nombre}!* Tu turno con el Dr. {medico_nombre} para el día *{fecha}* a las *{hora} hs* ha sido *confirmado exitosamente*.\n\n_¡Te esperamos! Podés escribir *menu* en cualquier momento para más opciones._',
+          {
+            paciente_nombre: session.paciente?.nombre || 'Paciente',
+            medico_nombre: `${t?.medico_nombre || ''} ${t?.medico_apellido || ''}`.trim(),
+            fecha: formatearFechaCorta(t?.fecha),
+            hora: (t?.hora_inicio || '').substring(0, 5)
+          }
+        );
+        return await sendWhatsAppMessage(phone, msgOk);
+      } catch (err) {
+        console.error('Error confirmando turno desde recordatorio:', err);
+        session.step = 'INIT';
+        return await sendWhatsAppMessage(phone, 'Ocurrió un error confirmando tu turno. Escribí *menu* para consultar tus turnos.');
+      }
+    }
+
+    if (cleanInput === '2') {
+      session.turnoSeleccionadoCancelar = session.turno;
+      return await preguntarConfirmacionCancelacion(phone, session);
+    }
   }
 
   // =========================================================================
@@ -1213,3 +1334,6 @@ _Respondé con el número (1, 2, 3, 4 o 5) para continuar._`;
 }
 
 module.exports = router;
+module.exports.sendWhatsAppMessage = sendWhatsAppMessage;
+module.exports.getBotMessage = getBotMessage;
+module.exports.userSessions = userSessions;

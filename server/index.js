@@ -12,6 +12,7 @@ const pacienteRoutes = require('./routes/paciente');
 const medicoRoutes = require('./routes/medico');
 const adminRoutes = require('./routes/admin');
 const whatsappRoutes = require('./routes/whatsapp');
+const { iniciarCronRecordatorios } = require('./services/cronRecordatorios');
 
 const app = express();
 const PORT = process.env.PORT || 5060;
@@ -70,4 +71,5 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Turnos Backend corriendo en http://localhost:${PORT}`);
+  iniciarCronRecordatorios();
 });
