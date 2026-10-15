@@ -47,7 +47,7 @@ async function procesarRecordatorios48h(nowArg) {
        LEFT JOIN especialidades e ON t.especialidad_id = e.id
        LEFT JOIN unidades_atencion u ON t.unidad_id = u.id
        WHERE t.fecha BETWEEN ? AND ?
-         AND t.estado IN ('asignado', 'pendiente')
+         AND t.estado IN ('asignado', 'pendiente', 'confirmado')
          AND t.recordatorio_48h_enviado = 0
          AND p.telefono IS NOT NULL AND p.telefono != ''
        LIMIT 40`,
