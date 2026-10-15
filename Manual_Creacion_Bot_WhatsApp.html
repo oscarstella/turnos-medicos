@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Manual Integral: Creación de Bot de WhatsApp para Turnos Médicos</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 18mm 16mm 18mm 16mm;
+      @bottom-right {
+        content: counter(page);
+        font-size: 9pt;
+        font-family: 'Inter', sans-serif;
+        color: #64748b;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 10pt;
+      line-height: 1.55;
+      color: #1e293b;
+      background-color: #ffffff;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Portada */
+    .cover-page {
+      height: 92vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      padding: 40px 10px;
+    }
+
+    .cover-badge {
+      display: inline-block;
+      align-self: flex-start;
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .cover-header {
+      margin-top: 60px;
+    }
+
+    .cover-title {
+      font-size: 28pt;
+      font-weight: 800;
+      line-height: 1.15;
+      color: #0f172a;
+      margin: 0 0 16px 0;
+    }
+
+    .cover-subtitle {
+      font-size: 13pt;
+      color: #475569;
+      line-height: 1.45;
+      margin-bottom: 30px;
+      max-width: 650px;
+    }
+
+    .cover-tags {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+
+    .tag {
+      background: #f1f5f9;
+      color: #334155;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 8.5pt;
+      font-weight: 600;
+      border: 1px solid #e2e8f0;
+    }
+
+    .cover-footer {
+      border-top: 2px solid #e2e8f0;
+      padding-top: 25px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    .meta-box h4 {
+      margin: 0 0 4px 0;
+      font-size: 9pt;
+      text-transform: uppercase;
+      color: #64748b;
+      letter-spacing: 0.5px;
+    }
+
+    .meta-box p {
+      margin: 0;
+      font-weight: 600;
+      font-size: 11pt;
+      color: #0f172a;
+    }
+
+    /* Estilos generales de contenido */
+    h1, h2, h3, h4 {
+      color: #0f172a;
+      font-weight: 700;
+      page-break-after: avoid;
+    }
+
+    h1 {
+      font-size: 18pt;
+      border-bottom: 2px solid #2563eb;
+      padding-bottom: 8px;
+      margin-top: 0;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h2 {
+      font-size: 13pt;
+      margin-top: 22px;
+      margin-bottom: 10px;
+      color: #1e40af;
+      border-left: 4px solid #2563eb;
+      padding-left: 10px;
+    }
+
+    h3 {
+      font-size: 11pt;
+      margin-top: 16px;
+      margin-bottom: 8px;
+      color: #334155;
+    }
+
+    p {
+      margin-top: 0;
+      margin-bottom: 10px;
+      text-align: justify;
+    }
+
+    ul, ol {
+      margin-top: 0;
+      margin-bottom: 12px;
+      padding-left: 22px;
+    }
+
+    li {
+      margin-bottom: 5px;
+    }
+
+    /* Cajas y Callouts */
+    .callout {
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 14px 0;
+      page-break-inside: avoid;
+      font-size: 9.5pt;
+    }
+
+    .callout-info {
+      background-color: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      color: #1e3a8a;
+    }
+
+    .callout-warning {
+      background-color: #fffbeb;
+      border-left: 4px solid #f59e0b;
+      color: #78350f;
+    }
+
+    .callout-success {
+      background-color: #ecfdf5;
+      border-left: 4px solid #10b981;
+      color: #064e3b;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* Código */
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8.5pt;
+      background: #f1f5f9;
+      padding: 2px 5px;
+      border-radius: 4px;
+      color: #0f172a;
+      border: 1px solid #e2e8f0;
+    }
+
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8pt;
+      line-height: 1.45;
+      overflow-x: hidden;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 12px 0;
+      page-break-inside: avoid;
+      border: 1px solid #1e293b;
+    }
+
+    /* Tablas */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 8.5pt;
+      page-break-inside: avoid;
+    }
+
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 10px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      font-weight: 700;
+    }
+
+    tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+
+    /* Diagramas de flujo en cajas */
+    .flow-step {
+      display: flex;
+      margin-bottom: 12px;
+      page-break-inside: avoid;
+    }
+
+    .step-number {
+      background: #2563eb;
+      color: white;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 10pt;
+      margin-right: 12px;
+      flex-shrink: 0;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    .step-title {
+      font-weight: 700;
+      font-size: 10.5pt;
+      color: #0f172a;
+      margin-bottom: 2px;
+    }
+
+    .page-break {
+      page-break-after: always;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      font-size: 7.5pt;
+      font-weight: 700;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .badge-primary { background: #dbeafe; color: #1e40af; }
+    .badge-success { background: #dcfce7; color: #166534; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+  </style>
+</head>
+<body>
+
+  <!-- PORTADA -->
+  <div class="cover-page">
+    <div>
+      <span class="cover-badge">Manual de Ingeniería y Arquitectura</span>
+      <div class="cover-header">
+        <h1 class="cover-title">Guía Completa para la Creación de un Bot de WhatsApp</h1>
+        <p class="cover-subtitle">
+          Arquitectura integral de producción basada en <strong>WhatsApp Cloud API de Meta</strong>, backend reactivo con <strong>Node.js y Express</strong>, base de datos <strong>MySQL</strong> y panel de administración en <strong>React</strong>.
+        </p>
+        <div class="cover-tags">
+          <span class="tag">📱 Meta Cloud API v21.0</span>
+          <span class="tag">⚡ Webhooks Seguros</span>
+          <span class="tag">🗄️ MySQL & Emojis utf8mb4</span>
+          <span class="tag">🔄 Sesiones y Máquina de Estados</span>
+          <span class="tag">⚙️ CRUD de Mensajes Dinámicos</span>
+          <span class="tag">🏥 Turnos Médicos</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cover-footer">
+      <div class="meta-box">
+        <h4>Proyecto</h4>
+        <p>OscarSoft Turnos</p>
+      </div>
+      <div class="meta-box">
+        <h4>Autor / Responsable</h4>
+        <p>Oscar Stella</p>
+      </div>
+      <div class="meta-box">
+        <h4>Fecha de Edición</h4>
+        <p>Octubre 2026</p>
+      </div>
+      <div class="meta-box">
+        <h4>Versión</h4>
+        <p>1.0 - Producción</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLA DE CONTENIDOS & INTRODUCCIÓN -->
+  <div>
+    <h1>1. Introducción y Arquitectura General</h1>
+    
+    <p>
+      El presente documento recopila exhaustivamente la metodología técnica, diseño de arquitectura y código fuente implementado para construir el <strong>Bot Oficial de WhatsApp</strong> integrado al sistema de gestión de turnos médicos <strong>OscarSoft Turnos</strong>.
+    </p>
+
+    <div class="callout callout-info">
+      <span class="callout-title">💡 ¿Por qué WhatsApp Cloud API Oficial de Meta y no librerías no oficiales?</span>
+      A diferencia de librerías basadas en emulación de navegador web (como Baileys, WPPConnect o Puppeteer), la <strong>API oficial en la nube de Meta</strong> garantiza:
+      <ul style="margin: 4px 0 0 0; padding-left: 18px;">
+        <li>Cero riesgo de baneo o bloqueo del número corporativo.</li>
+        <li>Alta disponibilidad garantizada con SLA oficial de Meta.</li>
+        <li>Entrega inmediata de webhooks mediante protocolo HTTP POST seguro.</li>
+        <li>Soporte de botones interactivos, listas, plantillas de marketing y comprobantes verificados.</li>
+      </ul>
+    </div>
+
+    <h2>Diagrama de Flujo de la Arquitectura</h2>
+    <p>La interacción del usuario desde WhatsApp viaja a través de la infraestructura distribuida de la siguiente manera:</p>
+
+    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin: 12px 0;">
+      <pre style="background: transparent; color: #0f172a; padding: 0; margin: 0; font-size: 8.5pt; border: none;">
+[ Paciente en WhatsApp ]
+         │
+         ▼  (Mensaje de texto / opción seleccionada)
+[ Servidores de Meta / WhatsApp Cloud API ]
+         │
+         ▼  (Webhook HTTP POST /api/turnos/whatsapp/webhook)
+[ Servidor Node.js / Express (Backend) ]
+         │
+         ├───► [ userSessions (Memoria RAM) ] : Rastreo de estado conversacional
+         │
+         ├───► [ MySQL: bot_respuestas ] : Textos, plantillas dinámicas y FAQs
+         │
+         ├───► [ MySQL: usuarios / turnos / agendas ] : Lógica médica en tiempo real
+         │
+         ▼  (Llamada HTTP POST a https://graph.facebook.com/v21.0/{id}/messages)
+[ Servidores de Meta ]
+         │
+         ▼  (Respuesta inmediata en el chat)
+[ Paciente en WhatsApp ]
+      </pre>
+    </div>
+
+    <h2>Componentes Clave del Sistema</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Componente</th>
+          <th>Tecnología / Ruta</th>
+          <th>Responsabilidad</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Meta Cloud API</strong></td>
+          <td>Graph API v21.0</td>
+          <td>Recepción del mensaje móvil y envío del mensaje saliente.</td>
+        </tr>
+        <tr>
+          <td><strong>Webhook Router</strong></td>
+          <td><code>server/routes/whatsapp.js</code></td>
+          <td>Verificación GET con Meta y procesamiento POST de eventos.</td>
+        </tr>
+        <tr>
+          <td><strong>Motor de Sesiones</strong></td>
+          <td><code>userSessions (Map)</code></td>
+          <td>Control de la conversación interactiva paso a paso por teléfono.</td>
+        </tr>
+        <tr>
+          <td><strong>Repositorio de Respuestas</strong></td>
+          <td>Tabla <code>bot_respuestas</code></td>
+          <td>Textos parametrizables, sin mensajes cableados en código.</td>
+        </tr>
+        <tr>
+          <td><strong>Panel Administrativo</strong></td>
+          <td>React (<code>DashboardPage.jsx</code>)</td>
+          <td>CRUD web para crear y editar respuestas y disparadores del bot.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- PASO A PASO: CONFIGURACIÓN EN META -->
+  <div>
+    <h1>2. Configuración en Meta for Developers</h1>
+    <p>Para operar con la API Oficial de WhatsApp Cloud se deben seguir los siguientes pasos en la consola de Meta:</p>
+
+    <div class="flow-step">
+      <div class="step-number">1</div>
+      <div class="step-content">
+        <div class="step-title">Creación de la Cuenta y Aplicación</div>
+        <p>Ingresar en <a href="https://developers.facebook.com/">developers.facebook.com</a> con la cuenta comercial de Facebook. Ir a <strong>Mis Apps &gt; Crear App</strong> y seleccionar el tipo de caso de uso <strong>Otro &gt; Negocios (Business)</strong>.</p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="step-number">2</div>
+      <div class="step-content">
+        <div class="step-title">Agregar el Producto WhatsApp</div>
+        <p>En el panel lateral de la aplicación creada, buscar <strong>WhatsApp</strong> y presionar <strong>Configurar</strong>. Esto habilitará la consola de WhatsApp Cloud API.</p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="step-number">3</div>
+      <div class="step-content">
+        <div class="step-title">Extracción de Credenciales Críticas</div>
+        <p>En la sección <strong>WhatsApp &gt; Primeros Pasos (API Setup)</strong>, se generan los 3 identificadores obligatorios que deben almacenarse en el archivo <code>.env</code>:</p>
+      </div>
+    </div>
+
+    <pre>
+# Identificadores de Meta for Developers
+APP_ID=1783214182577627
+WHATSAPP_PHONE_NUMBER_ID=1354333314430195
+WHATSAPP_WABA_ID=1990059401689850
+
+# Token Permanente generado en Meta Business Manager
+WHATSAPP_ACCESS_TOKEN=EAAZAV0ufpNds...
+
+# Token secreto que inventamos para verificar el Webhook
+WHATSAPP_VERIFY_TOKEN=oscarsoft_turnos_wa_token_2026
+    </pre>
+
+    <div class="callout callout-warning">
+      <span class="callout-title">⚠️ Token Temporal vs. Token Permanente de Producción</span>
+      El token inicial que provee la consola de Meta expira a las <strong>24 horas</strong>. Para producción es mandatorio crear un <strong>Usuario del Sistema (System User)</strong> en <a href="https://business.facebook.com/settings">business.facebook.com</a> con rol de Empleado o Administrador, asignarle la aplicación de WhatsApp y generar un token sin fecha de expiración con los permisos:
+      <strong><code>whatsapp_business_messaging</code></strong> y <strong><code>whatsapp_business_management</code></strong>.
+    </div>
+
+    <div class="flow-step">
+      <div class="step-number">4</div>
+      <div class="step-content">
+        <div class="step-title">Configuración del Webhook en Meta</div>
+        <p>En la solapa <strong>Configuración de WhatsApp &gt; Webhook</strong>:</p>
+        <ul>
+          <li><strong>URL de devolución de llamada:</strong> <code>https://tu-dominio.com/api/turnos/whatsapp/webhook</code></li>
+          <li><strong>Identificador de verificación (Verify Token):</strong> Debe coincidir exactamente con <code>WHATSAPP_VERIFY_TOKEN</code> configurado en tu servidor.</li>
+          <li><strong>Campos de suscripción:</strong> Suscribir obligatoriamente el campo <strong><code>messages</code></strong>.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- BASE DE DATOS Y MENSAJES DINÁMICOS -->
+  <div>
+    <h1>3. Base de Datos: Cero Hardcodeo y Emojis</h1>
+
+    <p>
+      Una de las reglas arquitectónicas más importantes del sistema es que <strong>ningún mensaje fijo ni flujo conversacional debe quedar cableado en el código JavaScript</strong>. Toda respuesta proviene de la tabla <code>bot_respuestas</code>.
+    </p>
+
+    <div class="callout callout-success">
+      <span class="callout-title">✅ Soporte Mandatorio de Emojis: utf8mb4</span>
+      Los mensajes de WhatsApp utilizan activamente emoticones (🏥, 🗓️, ⏰, 👨‍⚕️, ❌, ✅). En MySQL, el juego de caracteres estándar <code>utf8</code> solo soporta hasta 3 bytes, lo que causa un error fatal al intentar guardar un emoji.
+      <strong>Tanto la base de datos como las tablas y la conexión de Node.js deben crearse en <code>utf8mb4</code> con intercalación <code>utf8mb4_unicode_ci</code></strong>.
+    </div>
+
+    <h2>Estructura DDL de la Tabla <code>bot_respuestas</code></h2>
+    <pre>
+CREATE TABLE IF NOT EXISTS bot_respuestas (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  clave VARCHAR(80) NOT NULL UNIQUE,
+  titulo VARCHAR(150) NOT NULL,
+  descripcion VARCHAR(255) NULL,
+  disparador VARCHAR(200) NULL,
+  mensaje TEXT NOT NULL,
+  activo TINYINT(1) DEFAULT 1,
+  creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    </pre>
+
+    <h2>Variables Dinámicas del Sistema</h2>
+    <p>Las plantillas de mensaje en la base de datos contienen marcas de sustitución entre llaves <code>{variable}</code> que el motor del backend reemplaza en tiempo de ejecución:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Variable</th>
+          <th>Descripción</th>
+          <th>Ejemplo de Reemplazo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>{medico_nombre}</code></td>
+          <td>Nombre y apellido completo del profesional</td>
+          <td><em>Dr. Carlos Bocian</em></td>
+        </tr>
+        <tr>
+          <td><code>{paciente_nombre}</code></td>
+          <td>Nombre del paciente identificado</td>
+          <td><em>Oscar Stella</em></td>
+        </tr>
+        <tr>
+          <td><code>{fecha}</code></td>
+          <td>Fecha del turno en formato argentino</td>
+          <td><em>24/10/2026</em></td>
+        </tr>
+        <tr>
+          <td><code>{hora}</code></td>
+          <td>Hora de la cita médica (formato 24hs)</td>
+          <td><em>09:30</em></td>
+        </tr>
+        <tr>
+          <td><code>{sede}</code></td>
+          <td>Nombre y dirección de la unidad de atención</td>
+          <td><em>Sede Pasaje Gutiérrez (Pje. Gutiérrez 980)</em></td>
+        </tr>
+        <tr>
+          <td><code>{turno_id}</code></td>
+          <td>Identificador único del comprobante</td>
+          <td><em>#482</em></td>
+        </tr>
+        <tr>
+          <td><code>{cobertura}</code></td>
+          <td>Obra Social y Plan del paciente</td>
+          <td><em>OSDE - Plan 210</em></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Mecanismo de Lectura y Fallback en JavaScript</h2>
+    <pre>
+async function getBotMessage(clave, fallback, variables = {}) {
+  try {
+    const [rows] = await pool.query(
+      'SELECT mensaje FROM bot_respuestas WHERE clave = ? AND activo = 1 LIMIT 1',
+      [clave]
+    );
+    let text = (rows.length > 0 && rows[0].mensaje) ? rows[0].mensaje : fallback;
+    for (const [k, v] of Object.entries(variables)) {
+      text = text.replaceAll(`{${k}}`, v || '');
+    }
+    return text;
+  } catch (err) {
+    let text = fallback;
+    for (const [k, v] of Object.entries(variables)) {
+      text = text.replaceAll(`{${k}}`, v || '');
+    }
+    return text;
+  }
+}
+    </pre>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- DESARROLLO DEL WEBHOOK EN NODE.JS -->
+  <div>
+    <h1>4. Implementación del Backend (Node.js & Express)</h1>
+    <p>El backend gestiona dos responsabilidades esenciales: validar el webhook y recibir los mensajes entrantes.</p>
+
+    <h2>1. Verificación del Webhook por Meta (Endpoint GET)</h2>
+    <p>Cuando se configura el Webhook en el portal de Meta, sus servidores disparan una consulta GET con tres parámetros:</p>
+    <ul>
+      <li><code>hub.mode</code>: Debe tener el valor <code>subscribe</code>.</li>
+      <li><code>hub.verify_token</code>: Debe coincidir exactamente con nuestro <code>WHATSAPP_VERIFY_TOKEN</code>.</li>
+      <li><code>hub.challenge</code>: Un número aleatorio que nuestro servidor debe devolver con código HTTP 200.</li>
+    </ul>
+
+    <pre>
+router.get('/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN;
+
+  if (mode && token) {
+    if (mode === 'subscribe' && token === expectedToken) {
+      console.log('✅ Webhook verificado exitosamente por Meta');
+      return res.status(200).send(challenge);
+    }
+    return res.sendStatus(403);
+  }
+  return res.sendStatus(400);
+});
+    </pre>
+
+    <h2>2. Recepción de Mensajes del Paciente (Endpoint POST)</h2>
+    <div class="callout callout-warning">
+      <span class="callout-title">⚡ Regla de Oro de Meta: Responder 200 OK Inmediatamente</span>
+      Meta exige que el endpoint POST responda con código HTTP 200 en <strong>menos de 3 segundos</strong>. Si el servidor demora consultando la base de datos antes de enviar la respuesta HTTP, Meta considera que hubo un fallo y reintenta enviar el mismo mensaje una y otra vez en bucle.
+      <strong>Siempre debe ejecutarse <code>res.status(200).send('EVENT_RECEIVED')</code> antes o al inicio del procesamiento.</strong>
+    </div>
+
+    <h2>3. Normalización Telefónica para Argentina (Prefijo 9)</h2>
+    <p>En Argentina existe una particularidad técnica con WhatsApp: los teléfonos móviles a veces son reportados por Meta con el prefijo <code>549...</code> (13 dígitos) y a veces como <code>54...</code> (12 dígitos). Para evitar que los mensajes fallen, se implementó un mecanismo de reintento dual:</p>
+
+    <pre>
+async function sendWhatsAppMessage(toPhone, messageText) {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+
+  let targetPhones = [toPhone];
+  const digits = String(toPhone).replace(/\D/g, '');
+  if (digits.startsWith('549') && digits.length === 13) {
+    targetPhones = ['54' + digits.slice(3), toPhone];
+  } else if (digits.startsWith('54') && digits.length === 12) {
+    targetPhones = [digits, '549' + digits.slice(2)];
+  }
+
+  const url = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+
+  for (const phone of targetPhones) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: phone,
+        type: 'text',
+        text: { preview_url: false, body: messageText }
+      })
+    });
+    if (res.ok) return true;
+  }
+  return false;
+}
+    </pre>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- FLUJOS CONVERSACIONALES Y MÁQUINA DE ESTADOS -->
+  <div>
+    <h1>5. Máquina de Estados y Flujos Conversacionales</h1>
+    <p>Cada usuario mantiene una sesión en memoria vinculada a su número telefónico (<code>userSessions.get(phone)</code>).</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Estado (Step)</th>
+          <th>Objetivo</th>
+          <th>Siguiente Paso</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>INIT</code></td>
+          <td>Menú de bienvenida o detección de FAQ por palabra clave.</td>
+          <td>Según número elegido (1 a 5)</td>
+        </tr>
+        <tr>
+          <td><code>AWAIT_MEDICO_SEARCH</code></td>
+          <td>El usuario escribe el nombre o apellido del médico.</td>
+          <td><code>SELECT_MEDICO</code></td>
+        </tr>
+        <tr>
+          <td><code>SELECT_MEDICO</code></td>
+          <td>Elige el médico de la lista coincidente (1, 2, ...).</td>
+          <td><code>SELECT_FECHA</code></td>
+        </tr>
+        <tr>
+          <td><code>SELECT_FECHA</code></td>
+          <td>Elige una de las próximas 5 fechas disponibles.</td>
+          <td><code>SELECT_HORA</code></td>
+        </tr>
+        <tr>
+          <td><code>SELECT_HORA</code></td>
+          <td>Elige uno de los horarios libres (09:00, 09:30, ...).</td>
+          <td><code>AWAIT_DNI</code></td>
+        </tr>
+        <tr>
+          <td><code>AWAIT_DNI</code></td>
+          <td>Ingresa DNI del paciente para validar titularidad.</td>
+          <td><code>SELECT_COBERTURA</code> o Invitación</td>
+        </tr>
+        <tr>
+          <td><code>CONFIRM_CANCELACION</code></td>
+          <td>Confirmación explícita (1: Sí / 2: No) antes de anular.</td>
+          <td>Liberación de turno en DB</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Flujo 1: Agendamiento y Validación de Paciente</h2>
+    <p>
+      Si el paciente ingresa un DNI que <strong>no existe</strong> en la base de datos de usuarios, el bot no se rompe ni cancela abruptamente; responde con la plantilla <code>dni_no_registrado</code>, ofreciéndole el link web oficial para completar sus datos personales y registrar su carnet de obra social:
+    </p>
+
+    <div class="callout callout-info">
+      <strong>Mensaje enviado por el bot:</strong><br>
+      <em>"❌ DNI no registrado. No encontramos ninguna cuenta registrada con el DNI 32123456. Para poder agendar tu turno, primero registrate en: https://oscarsoft.com.ar/turnos/login?registro=1"</em>
+    </div>
+
+    <h2>Flujo 2: Consulta y Cancelación en 2 Pasos</h2>
+    <p>
+      Para cancelar un turno agendado (Opción 5), el sistema exige:
+    </p>
+    <ol>
+      <li>Ingreso del DNI para listar sus turnos activos futuros.</li>
+      <li>Selección del turno específico mediante su número de lista.</li>
+      <li><strong>Confirmación previa de seguridad:</strong> El bot pregunta explícitamente:<br>
+      <code>*1* - ✅ Sí, cancelar este turno</code> / <code>*2* - ❌ No, conservar mi turno</code>.<br>
+      Solo si presiona 1 se ejecuta la sentencia SQL de liberación del turno y se notifica al paciente.</li>
+    </ol>
+
+    <h2>Disparadores de FAQ Inteligentes</h2>
+    <p>
+      La tabla <code>bot_respuestas</code> posee la columna <code>disparador</code>. Si un paciente escribe en cualquier momento palabras como <em>"sedes"</em>, <em>"donde atienden"</em>, <em>"requisitos"</em> o <em>"carnet"</em>, el bot salta directamente a la respuesta adecuada sin necesidad de navegar el menú numérico.
+    </p>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- PANEL DE CONTROL WEB CRUD -->
+  <div>
+    <h1>6. Panel de Administración Web (Dashboard React)</h1>
+    <p>Para empoderar al equipo médico y administrativo sin depender de desarrolladores para cambiar textos, se construyó una interfaz interactiva de administración.</p>
+
+    <h2>Funcionalidades del Panel Administrativo</h2>
+    <ul>
+      <li><strong>Listado de Respuestas Activas:</strong> Muestra cada plantilla, su clave de sistema, título descriptivo, disparadores configurados y estado de activación.</li>
+      <li><strong>Editor en Vivo:</strong> Modal con área de texto enriquecida que permite modificar los mensajes, añadir saltos de línea y emojis.</li>
+      <li><strong>Guía de Variables:</strong> El panel indica qué variables están permitidas para cada plantilla (ej: <code>{medico_nombre}</code>, <code>{fecha}</code>, etc.).</li>
+      <li><strong>Activación / Desactivación:</strong> Switch para deshabilitar una respuesta o disparador con un solo clic.</li>
+    </ul>
+
+    <h2>Rutas del Servidor para el CRUD (<code>server/routes/admin.js</code>)</h2>
+    <pre>
+// Obtener todas las respuestas y preguntas del bot
+router.get('/bot-respuestas', authMiddleware, requireAdmin, async (req, res) => {
+  const [rows] = await pool.query('SELECT * FROM bot_respuestas ORDER BY id ASC');
+  res.json({ status: 'ok', data: rows });
+});
+
+// Actualizar una respuesta existente
+router.put('/bot-respuestas/:id', authMiddleware, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { titulo, descripcion, disparador, mensaje, activo } = req.body;
+  await pool.query(
+    'UPDATE bot_respuestas SET titulo = ?, descripcion = ?, disparador = ?, mensaje = ?, activo = ? WHERE id = ?',
+    [titulo, descripcion, disparador, mensaje, activo ? 1 : 0, id]
+  );
+  res.json({ status: 'ok', message: 'Respuesta actualizada exitosamente.' });
+});
+    </pre>
+
+    <div class="callout callout-success">
+      <span class="callout-title">🛡️ Seguridad en la API de Administración</span>
+      Todos los endpoints de administración exigen autenticación mediante tokens JWT y verifican que el rol del usuario sea <code>superadmin</code> o <code>admin</code> antes de permitir cualquier mutación de datos.
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- DESPLIEGUE, TESTING Y PRODUCCIÓN -->
+  <div>
+    <h1>7. Guía de Despliegue, Testing y Buenas Prácticas</h1>
+
+    <h2>Testing en Entorno Local (Desarrollo)</h2>
+    <p>Como los servidores de Meta necesitan enviar peticiones HTTP a una dirección accesible desde internet con certificado SSL (HTTPS), no se puede ingresar <code>http://localhost:5060</code> directamente en Meta.</p>
+
+    <div class="flow-step">
+      <div class="step-number">1</div>
+      <div class="step-content">
+        <div class="step-title">Levantar un Túnel HTTPS Seguro</div>
+        <p>Se puede utilizar <strong>Cloudflare Tunnels</strong> o <strong>Ngrok</strong>:</p>
+        <code>ngrok http 5060</code>
+        <p style="margin-top: 4px;">Ngrok otorgará una URL temporal pública (ej: <code>https://abcd-123.ngrok-free.app</code>).</p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="step-number">2</div>
+      <div class="step-content">
+        <div class="step-title">Configurar la URL en Meta</div>
+        <p>Pegar la URL generada: <code>https://abcd-123.ngrok-free.app/api/turnos/whatsapp/webhook</code> y verificar con el token.</p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="step-number">3</div>
+      <div class="step-content">
+        <div class="step-title">Enviar Mensaje de Prueba desde un Teléfono Autorizado</div>
+        <p>En modo Desarrollo de Meta, solo los números registrados en la lista de <em>Destinatarios de Prueba (To Phones)</em> pueden enviar y recibir mensajes.</p>
+      </div>
+    </div>
+
+    <h2>Despliegue en Producción</h2>
+    <div style="background: #f1f5f9; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
+      <h3 style="margin-top: 0;">Checklist de Salida a Producción:</h3>
+      <ol style="margin-bottom: 0;">
+        <li><strong>Nginx Reverse Proxy:</strong> Configurar Nginx para redirigir el tráfico del subdominio o ruta <code>/api/turnos/whatsapp</code> hacia el puerto de Node.js (5060).</li>
+        <li><strong>Certificado SSL/TLS Válido:</strong> Meta rechaza de inmediato cualquier webhook con certificado autofirmado o vencido. Usar Certbot (Let's Encrypt).</li>
+        <li><strong>Gestor de Procesos PM2:</strong> Ejecutar la aplicación con <code>pm2 start server/index.js --name "turnos-backend"</code> con reinicio automático.</li>
+        <li><strong>Verificación de Negocio en Meta:</strong> Para enviar mensajes a cualquier paciente sin restricción de prueba, se debe completar la <em>Verificación de Empresa (Business Verification)</em> en el Administrador Comercial de Meta.</li>
+      </ol>
+    </div>
+
+    <h2>Errores Frecuentes y Cómo Solucionarlos</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Error / Síntoma</th>
+          <th>Causa Raíz</th>
+          <th>Solución Definitiva</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Verification failed (403)</code></td>
+          <td>El <code>verify_token</code> ingresado en Meta no coincide con el <code>.env</code>.</td>
+          <td>Verificar mayúsculas y espacios en <code>WHATSAPP_VERIFY_TOKEN</code>.</td>
+        </tr>
+        <tr>
+          <td><code>Error 190 (Invalid OAuth)</code></td>
+          <td>El token de acceso de 24 horas expiró.</td>
+          <td>Crear System User permanente en Business Manager y renovar <code>WHATSAPP_ACCESS_TOKEN</code>.</td>
+        </tr>
+        <tr>
+          <td><code>Incorrect string value (emojis)</code></td>
+          <td>La tabla de MySQL está en <code>latin1</code> o <code>utf8</code> (3 bytes).</td>
+          <td>Ejecutar <code>ALTER TABLE bot_respuestas CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;</code></td>
+        </tr>
+        <tr>
+          <td>Bucle infinito de mensajes de Meta</td>
+          <td>El endpoint POST tardó más de 3 segundos en responder.</td>
+          <td>Enviar <code>res.status(200).send('EVENT_RECEIVED')</code> al inicio de la función.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top: 35px; border-top: 1px solid #cbd5e1; padding-top: 15px; text-align: center; color: #64748b; font-size: 8.5pt;">
+      Documento generado automáticamente para el proyecto OscarSoft Turnos • Todos los derechos reservados.
+    </div>
+  </div>
+
+</body>
+</html>

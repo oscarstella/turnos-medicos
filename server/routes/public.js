@@ -638,6 +638,14 @@ router.post('/agendar', optionalAuth, async (req, res) => {
       }
     }
 
+    // Si el paciente ya estaba registrado/autenticado, actualizar siempre su cobertura predeterminada
+    if (pacienteId) {
+      await connection.query(
+        'UPDATE usuarios SET obra_social_id = ?, plan_id = ? WHERE id = ?',
+        [finalObraSocialId, finalPlanId, pacienteId]
+      );
+    }
+
     // Calcular hora_fin si no fue provista (por defecto +30 min)
     let calculatedHoraFin = hora_fin;
     if (!calculatedHoraFin) {

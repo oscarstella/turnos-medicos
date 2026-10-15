@@ -5,6 +5,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const pool = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { notificarSuspensionPacientes } = require('./whatsapp');
 
 router.use(requireAuth);
 router.use(requireRole(['medico', 'admin', 'superadmin']));
@@ -632,12 +633,16 @@ router.post('/suspensiones', async (req, res) => {
 
     const suspensionId = result.insertId;
 
-    // Obtener turnos afectados
+    // Obtener turnos afectados con detalle completo de paciente y médico
     const [afectados] = await connection.query(
       `SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado,
-              p.nombre as paciente_nombre, p.apellido as paciente_apellido, p.telefono as paciente_telefono
+              t.medico_id, t.especialidad_id, t.obra_social_id, t.plan_id, t.unidad_id,
+              p.id as paciente_id, p.nombre as paciente_nombre, p.apellido as paciente_apellido,
+              p.dni as paciente_dni, p.email as paciente_email, p.telefono as paciente_telefono,
+              m.nombre as medico_nombre, m.apellido as medico_apellido
        FROM turnos t
        JOIN usuarios p ON t.paciente_id = p.id
+       JOIN usuarios m ON t.medico_id = m.id
        WHERE t.medico_id = ? 
          AND t.fecha BETWEEN ? AND ? 
          AND t.estado NOT IN ('cancelado', 'libre')`,
@@ -657,9 +662,18 @@ router.post('/suspensiones', async (req, res) => {
 
     await connection.commit();
 
+    // Disparar aviso automático de reprogramación por WhatsApp a los pacientes afectados (asíncrono)
+    if (cancelar_turnos && afectados.length > 0 && typeof notificarSuspensionPacientes === 'function') {
+      setImmediate(() => {
+        notificarSuspensionPacientes(afectados, motivo).catch(err => {
+          console.error('Error notificando suspensión a pacientes por WhatsApp:', err);
+        });
+      });
+    }
+
     res.status(201).json({
       status: 'success',
-      message: `Suspensión registrada exitosamente. Se identificaron ${afectados.length} turno(s) en ese período.`,
+      message: `Suspensión registrada exitosamente. Se identificaron ${afectados.length} turno(s) en ese período y se notificará a los pacientes vía WhatsApp.`,
       suspension_id: suspensionId,
       afectados_count: afectados.length,
       afectados

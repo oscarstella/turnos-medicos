@@ -193,6 +193,232 @@ async function sendWhatsAppMessage(toPhone, messageText) {
 }
 
 /**
+ * Normaliza texto eliminando acentos, puntuación y homogeneizando fonemas comunes del español
+ */
+function normalizarFonetica(texto) {
+  if (!texto) return '';
+  let s = String(texto)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Quita tildes y diéresis
+    .replace(/[^a-z0-9]/g, '');      // Solo caracteres alfanuméricos
+
+  // Reemplazos fonéticos del español
+  s = s.replace(/v/g, 'b');
+  s = s.replace(/ce|ci/g, 'se');
+  s = s.replace(/z/g, 's');
+  s = s.replace(/ge|gi/g, 'je');
+  s = s.replace(/qu/g, 'k');
+  s = s.replace(/c(?=[aou])/g, 'k');
+  s = s.replace(/c(?=[^seiaou]|$)/g, 'k'); // c final o ante consonante (ej: Labencki -> labenki)
+  s = s.replace(/ck/g, 'k');
+  s = s.replace(/y(?=[aeiou])/g, 'y');
+  s = s.replace(/y(?![aeiou])/g, 'i');
+  s = s.replace(/ll/g, 'y');
+  s = s.replace(/h/g, ''); // h muda
+  // Reducir letras dobles repetidas (ej: bb -> b, ss -> s)
+  s = s.replace(/(.)\1+/g, '$1');
+
+  return s;
+}
+
+/**
+ * Calcula la distancia de Levenshtein entre dos cadenas
+ */
+function levenshteinDistance(s1, s2) {
+  const m = s1.length;
+  const n = s2.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,      // eliminación
+        dp[i][j - 1] + 1,      // inserción
+        dp[i - 1][j - 1] + cost // sustitución
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Calcula el porcentaje de similitud (0.0 a 1.0) entre dos cadenas usando Levenshtein + fonética + subsecuencias
+ */
+function calcularSimilitud(busqueda, objetivo) {
+  if (!busqueda || !objetivo) return 0;
+  const bRaw = busqueda.toLowerCase().trim();
+  const oRaw = objetivo.toLowerCase().trim();
+
+  // Coincidencia exacta o contenida directa
+  if (bRaw === oRaw) return 1.0;
+  if (oRaw.includes(bRaw) || bRaw.includes(oRaw)) {
+    return 0.85 + (Math.min(bRaw.length, oRaw.length) / Math.max(bRaw.length, oRaw.length)) * 0.15;
+  }
+
+  const bFon = normalizarFonetica(busqueda);
+  const oFon = normalizarFonetica(objetivo);
+
+  if (bFon === oFon) return 0.95;
+  if (oFon.includes(bFon) || bFon.includes(oFon)) {
+    return 0.80 + (Math.min(bFon.length, oFon.length) / Math.max(bFon.length, oFon.length)) * 0.15;
+  }
+
+  // Levenshtein sobre cadenas fonéticas
+  const maxLen = Math.max(bFon.length, oFon.length);
+  if (maxLen === 0) return 1.0;
+  const dist = levenshteinDistance(bFon, oFon);
+  const simFon = (maxLen - dist) / maxLen;
+
+  // Levenshtein sobre cadenas limpias
+  const maxRawLen = Math.max(bRaw.length, oRaw.length);
+  const rawDist = levenshteinDistance(bRaw, oRaw);
+  const simRaw = (maxRawLen - rawDist) / maxRawLen;
+
+  return Math.max(simFon, simRaw);
+}
+
+/**
+ * Evalúa la similitud de un médico contra el término de búsqueda ingresado
+ */
+function puntuarMedico(busqueda, medico) {
+  const terminos = busqueda.toLowerCase().split(/\s+/).filter(Boolean);
+  const nombre = medico.nombre || '';
+  const apellido = medico.apellido || '';
+  const nombreCompleto = `${nombre} ${apellido}`;
+  const apellidoNombre = `${apellido} ${nombre}`;
+
+  let mejorPuntaje = 0;
+  mejorPuntaje = Math.max(mejorPuntaje, calcularSimilitud(busqueda, apellido));
+  mejorPuntaje = Math.max(mejorPuntaje, calcularSimilitud(busqueda, nombre));
+  mejorPuntaje = Math.max(mejorPuntaje, calcularSimilitud(busqueda, nombreCompleto));
+  mejorPuntaje = Math.max(mejorPuntaje, calcularSimilitud(busqueda, apellidoNombre));
+
+  // Si el usuario ingresó varias palabras (ej: "german olavenky")
+  if (terminos.length > 1) {
+    let suma = 0;
+    for (const t of terminos) {
+      const pNom = calcularSimilitud(t, nombre);
+      const pApe = calcularSimilitud(t, apellido);
+      suma += Math.max(pNom, pApe);
+    }
+    const prom = suma / terminos.length;
+    mejorPuntaje = Math.max(mejorPuntaje, prom);
+  }
+
+  return mejorPuntaje;
+}
+
+/**
+ * Notifica a los pacientes con turnos afectados por una suspensión médica
+ * y configura la sesión de cada uno en AWAIT_RESCHEDULE_CHOICE para que puedan reprogramar.
+ */
+async function notificarSuspensionPacientes(afectados, motivo) {
+  if (!afectados || afectados.length === 0) return;
+
+  for (const t of afectados) {
+    const rawTel = t.paciente_telefono;
+    if (!rawTel) continue;
+
+    const digits = String(rawTel).replace(/\D/g, '');
+    if (digits.length < 8) continue;
+
+    let cleanPhone = digits;
+    if (cleanPhone.length === 10 && !cleanPhone.startsWith('54')) {
+      cleanPhone = `549${cleanPhone}`;
+    } else if (cleanPhone.startsWith('15') && cleanPhone.length === 10) {
+      cleanPhone = `549294${cleanPhone.substring(2)}`;
+    }
+
+    // Configurar sesión conversacional para cuando el paciente responda
+    userSessions.set(cleanPhone, {
+      step: 'AWAIT_RESCHEDULE_CHOICE',
+      turnoOriginalId: t.id,
+      medico: { id: t.medico_id, nombre: t.medico_nombre, apellido: t.medico_apellido },
+      paciente: {
+        id: t.paciente_id,
+        nombre: t.paciente_nombre,
+        apellido: t.paciente_apellido,
+        dni: t.paciente_dni,
+        email: t.paciente_email,
+        telefono: rawTel,
+        obra_social_id: t.obra_social_id,
+        plan_id: t.plan_id
+      },
+      especialidad_id: t.especialidad_id,
+      obra_social_id: t.obra_social_id,
+      plan_id: t.plan_id,
+      unidad_id: t.unidad_id,
+      motivoSuspension: motivo || 'Razones de fuerza mayor',
+      fechaOriginal: t.fecha,
+      horaOriginal: t.hora_inicio
+    });
+
+    const fechaCorta = formatearFechaCorta(t.fecha);
+    const fechaTexto = formatearFechaTexto(t.fecha);
+    const hora = formatearHora24(t.hora_inicio);
+
+    const msg = await getBotMessage(
+      'suspension_medico_aviso',
+      `⚠️ *Aviso Importante de Atención Médica*\n\nHola *{paciente_nombre}*, te informamos que el *Dr. {medico_nombre}* no podrá atender el día *{fecha}* a las *{hora} hs* por: _{motivo}_.\n\nLamentamos las molestias ocasionadas. ¿Qué deseás hacer con tu turno?\n*1* - 🗓 Reprogramar mi turno para otra fecha disponible\n*2* - ❌ Dejar cancelado el turno definitivamente\n\n_Respondé con 1 o 2 para continuar._`,
+      {
+        paciente_nombre: `${t.paciente_nombre} ${t.paciente_apellido || ''}`.trim(),
+        medico_nombre: `${t.medico_nombre} ${t.medico_apellido || ''}`.trim(),
+        fecha: `${fechaTexto} (${fechaCorta})`,
+        hora: hora,
+        motivo: motivo || 'Fuerza mayor / Disposición del profesional'
+      }
+    );
+
+    try {
+      await sendWhatsAppMessage(cleanPhone, msg);
+    } catch (err) {
+      console.error(`Error enviando aviso de suspensión a ${cleanPhone}:`, err.message);
+    }
+
+    // Rate limiting: 800ms entre cada mensaje
+    await new Promise(r => setTimeout(r, 800));
+  }
+}
+
+/**
+ * Muestra los horarios disponibles de una fecha en bloques de 5 para facilitar la navegación
+ */
+async function mostrarSlotsPaginados(phone, session, offset = 0) {
+  const all = session.allSlots || [];
+  const pageSize = 5;
+  const currentSlots = all.slice(offset, offset + pageSize);
+  session.currentSlots = currentSlots;
+  session.slotOffset = offset;
+  session.hasMoreSlots = offset + pageSize < all.length;
+  session.step = 'AWAIT_SLOT_SELECTION';
+
+  const selectedFecha = session.selectedFecha;
+  let msgSlots = `⏰ *Horarios disponibles para el ${selectedFecha.fechaTexto} (${formatearFechaCorta(selectedFecha.fecha)}):*\n\n`;
+  currentSlots.forEach((s, i) => {
+    msgSlots += `*${i + 1}* - ${s.hora_inicio.substring(0, 5)} hs\n`;
+  });
+
+  const sedeTxt = currentSlots[0]?.unidad_nombre 
+    ? `\n📍 *Sede:* ${currentSlots[0].unidad_nombre}${currentSlots[0].direccion ? ` (${currentSlots[0].direccion})` : ''}\n`
+    : '';
+  msgSlots += sedeTxt;
+
+  if (session.hasMoreSlots) {
+    msgSlots += `\n*6* - ⏩ Ver más horarios para este día`;
+  }
+  msgSlots += `\n*0* - ↩️ Cambiar de fecha\n\n_Respondé con el número del horario deseado (o *menu* para cancelar):_`;
+
+  return await sendWhatsAppMessage(phone, msgSlots);
+}
+
+/**
  * 1. Verificación del Webhook por parte de Meta (GET)
  */
 router.get('/webhook', (req, res) => {
@@ -345,6 +571,52 @@ async function handleIncomingUserMessage(phone, text) {
   }
 
   // =========================================================================
+  // RESPUESTA A SUSPENSIÓN MÉDICA (1: Reprogramar / 2: Cancelar)
+  // =========================================================================
+  if (session.step === 'AWAIT_RESCHEDULE_CHOICE') {
+    if (cleanInput === '1' || ['reprogramar', 'si', 'sí', 'cambiar'].includes(lowerInput)) {
+      try {
+        const medicoDetalle = await getMedicoDetalle(session.medico?.id);
+        if (!medicoDetalle) {
+          session.step = 'INIT';
+          return await sendWhatsAppMessage(phone, 'No se pudo cargar la agenda del profesional. Escribí *menu* para reiniciar.');
+        }
+        session.medico = medicoDetalle;
+
+        // Si el paciente no tiene todos sus datos cargados, completarlos desde DB
+        if (session.paciente?.id && !session.paciente?.dni) {
+          const [pRows] = await pool.query('SELECT * FROM usuarios WHERE id = ? LIMIT 1', [session.paciente.id]);
+          if (pRows.length > 0) session.paciente = pRows[0];
+        }
+
+        await sendWhatsAppMessage(
+          phone,
+          `🗓 ¡Perfecto, *${session.paciente?.nombre || 'paciente'}*! Vamos a buscar una nueva fecha para reprogramar tu consulta con el *Dr. ${session.medico.nombre} ${session.medico.apellido}*:`
+        );
+        return await iniciarSeleccionFecha(phone, session, 0);
+      } catch (err) {
+        console.error('Error al iniciar reprogramación:', err);
+        session.step = 'INIT';
+        return await sendWhatsAppMessage(phone, 'Ocurrió un error. Escribí *menu* para reiniciar.');
+      }
+    }
+
+    if (cleanInput === '2' || ['cancelar', 'no', 'dejar cancelado'].includes(lowerInput)) {
+      session.step = 'INIT';
+      const msgCancel = await getBotMessage(
+        'suspension_cancelado_confirmado',
+        '✅ Comprendido, tu turno ha quedado cancelado. Podés volver a escribirnos en cualquier momento cuando desees una nueva consulta. ¡Que tengas un excelente día!'
+      );
+      return await sendWhatsAppMessage(phone, msgCancel);
+    }
+
+    return await sendWhatsAppMessage(
+      phone,
+      '⚠️ Por favor respondé *1* para reprogramar tu turno para otra fecha disponible o *2* para dejarlo cancelado definitivamente:'
+    );
+  }
+
+  // =========================================================================
   // 1. ESTADO INICIAL / MENÚ PRINCIPAL
   // =========================================================================
   if (session.step === 'INIT') {
@@ -444,11 +716,55 @@ _Escribí *menu* para volver al menú de opciones._`
         [searchTerm, searchTerm]
       );
 
+      // Si no hay coincidencias exactas, activar Búsqueda Fonética y Difusa (Fuzzy Search)
       if (medicos.length === 0) {
-        return await sendWhatsAppMessage(
-          phone,
-          `❌ No encontramos profesionales con el término *"${cleanInput}"*.\n\nIntentá escribirlo de otra forma o escribí *menu* para volver al inicio:`
+        const [todosMedicos] = await pool.query(
+          `SELECT u.id, u.nombre, u.apellido, u.matricula, u.slug, u.acepta_particular, u.honorarios_particular, u.mostrar_honorarios,
+                  GROUP_CONCAT(DISTINCT e.nombre SEPARATOR ', ') as especialidades
+           FROM usuarios u
+           LEFT JOIN medicos_especialidades me ON u.id = me.usuario_id
+           LEFT JOIN especialidades e ON me.especialidad_id = e.id
+           WHERE u.rol = 'medico'
+           GROUP BY u.id`
         );
+
+        const puntuados = [];
+        for (const m of todosMedicos) {
+          const score = puntuarMedico(cleanInput, m);
+          if (score >= 0.55) {
+            puntuados.push({ ...m, score });
+          }
+        }
+
+        puntuados.sort((a, b) => b.score - a.score);
+        const sugeridos = puntuados.slice(0, 4);
+
+        if (sugeridos.length > 0) {
+          session.medicosList = sugeridos;
+          session.step = 'AWAIT_MEDICO_PICK';
+
+          let listaSugeridos = '';
+          sugeridos.forEach((m, idx) => {
+            listaSugeridos += `*${idx + 1}* - *Dr. ${m.nombre} ${m.apellido}*\n`;
+            if (m.especialidades) listaSugeridos += `     Especialidad: ${m.especialidades}\n`;
+            if (m.matricula) listaSugeridos += `     Matrícula: ${m.matricula}\n`;
+          });
+
+          const msgFuzzy = await getBotMessage(
+            'sugerencia_medico_fuzzy',
+            `🔎 No encontramos una coincidencia exacta para *"{busqueda}"*, pero encontramos estos profesionales:\n\n{lista_medicos}\n\n_Respondé con el *número* del profesional para agendar tu turno (o *menu* para volver):_`,
+            { busqueda: cleanInput, lista_medicos: listaSugeridos.trim() }
+          );
+
+          return await sendWhatsAppMessage(phone, msgFuzzy);
+        }
+
+        const msgNoEnc = await getBotMessage(
+          'medico_no_encontrado',
+          `❌ No encontramos profesionales coincidentes con *"{busqueda}"*.\n\nIntentá escribir solo el apellido o parte del nombre, o escribí *menu* para volver al inicio:`,
+          { busqueda: cleanInput }
+        );
+        return await sendWhatsAppMessage(phone, msgNoEnc);
       }
 
       session.medicosList = medicos;
@@ -611,14 +927,34 @@ _Luego de completar tu registro, regresá a este chat y escribí *menu* o *hola*
   }
 
   // =========================================================================
-  // 6. SELECCIÓN DE FECHA
+  // 6. SELECCIÓN DE FECHA (CON PAGINACIÓN)
   // =========================================================================
   if (session.step === 'AWAIT_DATE_SELECTION') {
+    // Opción 0 o volver
+    if (cleanInput === '0' || lowerInput === 'volver') {
+      session.step = 'INIT';
+      return await sendMainMenu(phone, session.paciente);
+    }
+
+    // Opción 6 o "más" para avanzar en la paginación de agenda
+    if (cleanInput === '6' || ['mas', 'más', 'ver mas', 'ver más', 'siguiente', 'posteriores'].includes(lowerInput)) {
+      if (session.fechasHasMore) {
+        return await iniciarSeleccionFecha(phone, session, (session.fechasOffset || 0) + 5);
+      } else {
+        const noMas = await getBotMessage(
+          'no_mas_turnos_disponibles',
+          'ℹ️ No hay más fechas disponibles dentro del período habilitado de agenda ({max_dias} días). Escribí el número de alguna de las fechas anteriores o *menu* para reiniciar.',
+          { max_dias: session.medicoMaxDias || 30 }
+        );
+        return await sendWhatsAppMessage(phone, noMas);
+      }
+    }
+
     const idx = parseInt(cleanInput, 10) - 1;
     if (isNaN(idx) || !session.fechas || !session.fechas[idx]) {
       return await sendWhatsAppMessage(
         phone,
-        '⚠️ Opción de fecha no válida. Por favor respondé con el número de la fecha deseada o escribí *menu*:'
+        '⚠️ Opción de fecha no válida. Respondé con el número de la fecha (1 a 5), *6* para ver más fechas o *0* para volver:'
       );
     }
 
@@ -632,25 +968,12 @@ _Luego de completar tu registro, regresá a este chat y escribí *menu* o *hola*
       if (slotsDisponibles.length === 0) {
         return await sendWhatsAppMessage(
           phone,
-          `⚠️ No quedan horarios disponibles para el *${selectedFecha.fechaTexto}* (${formatearFechaCorta(selectedFecha.fecha)}).\n\nPor favor, seleccioná otra de las fechas anteriores o escribí *menu* para volver.`
+          `⚠️ No quedan horarios disponibles para el *${selectedFecha.fechaTexto}* (${formatearFechaCorta(selectedFecha.fecha)}).\n\nPor favor, seleccioná otra de las fechas mostradas o escribí *6* para ver fechas posteriores:`
         );
       }
 
-      session.slots = slotsDisponibles;
-      session.step = 'AWAIT_SLOT_SELECTION';
-
-      let msgSlots = `⏰ *Horarios disponibles para el ${selectedFecha.fechaTexto} (${formatearFechaCorta(selectedFecha.fecha)}):*\n\n`;
-      slotsDisponibles.forEach((s, i) => {
-        msgSlots += `*${i + 1}* - ${s.hora_inicio.substring(0, 5)} hs\n`;
-      });
-
-      const sedeTxt = slotsDisponibles[0].unidad_nombre 
-        ? `\n📍 *Sede:* ${slotsDisponibles[0].unidad_nombre}${slotsDisponibles[0].direccion ? ` (${slotsDisponibles[0].direccion})` : ''}\n`
-        : '';
-
-      msgSlots += `${sedeTxt}\n_Respondé con el *número del horario* que preferís (o *menu* para cancelar):_`;
-
-      return await sendWhatsAppMessage(phone, msgSlots);
+      session.allSlots = slotsDisponibles;
+      return await mostrarSlotsPaginados(phone, session, 0);
     } catch (e) {
       console.error(e);
       session.step = 'INIT';
@@ -659,26 +982,86 @@ _Luego de completar tu registro, regresá a este chat y escribí *menu* o *hola*
   }
 
   // =========================================================================
-  // 7. SELECCIÓN DE HORARIO (SLOT)
+  // 7. SELECCIÓN DE HORARIO (SLOT CON PAGINACIÓN)
   // =========================================================================
   if (session.step === 'AWAIT_SLOT_SELECTION') {
+    if (cleanInput === '0' || lowerInput === 'volver') {
+      return await iniciarSeleccionFecha(phone, session, session.fechasOffset || 0);
+    }
+
+    if (cleanInput === '6' || ['mas', 'más', 'ver mas', 'ver más', 'horarios'].includes(lowerInput)) {
+      if (session.hasMoreSlots) {
+        return await mostrarSlotsPaginados(phone, session, (session.slotOffset || 0) + 5);
+      }
+    }
+
     const idx = parseInt(cleanInput, 10) - 1;
-    if (isNaN(idx) || !session.slots || !session.slots[idx]) {
+    if (isNaN(idx) || !session.currentSlots || !session.currentSlots[idx]) {
       return await sendWhatsAppMessage(
         phone,
-        '⚠️ Horario no válido. Por favor respondé con el número del horario deseado o escribí *menu*:'
+        '⚠️ Horario no válido. Por favor respondé con el número del horario deseado, *6* para ver más horarios o *0* para cambiar de fecha:'
       );
     }
 
-    session.selectedSlot = session.slots[idx];
+    session.selectedSlot = session.currentSlots[idx];
     return await iniciarSeleccionCobertura(phone, session);
   }
 
   // =========================================================================
-  // 8. TIPO DE COBERTURA (PARTICULAR U OBRA SOCIAL)
+  // 8. TIPO DE COBERTURA (PARTICULAR U OBRA SOCIAL DINÁMICA)
   // =========================================================================
   if (session.step === 'AWAIT_COVERAGE_SELECTION') {
+    // CASO A: Paciente con obra social registrada por defecto
+    if (session.pacienteObraNombre) {
+      if (cleanInput === '1' || ['si', 'sí', 'continuar'].includes(lowerInput)) {
+        session.cobertura = {
+          tipo: 'obra_social',
+          obra_social_id: session.paciente.obra_social_id,
+          plan_id: session.paciente.plan_id || null,
+          nombre: `${session.pacienteObraNombre}${session.pacientePlanNombre ? ` (${session.pacientePlanNombre})` : ''}`
+        };
+
+        if (session.paciente.plan_id) {
+          return await solicitarMotivoConsulta(phone, session);
+        } else {
+          return await iniciarSeleccionPlan(phone, session, session.paciente.obra_social_id, session.pacienteObraNombre);
+        }
+      }
+
+      if (cleanInput === '2' || ['cambiar', 'otra'].includes(lowerInput)) {
+        session.step = 'AWAIT_OS_SEARCH';
+        return await sendWhatsAppMessage(
+          phone,
+          `🔎 *Búsqueda de Nueva Obra Social o Prepaga*\n\nPor favor, escribí el *nombre* de tu nueva cobertura (ej: _OSDE_, _Swiss Medical_, _PAMI_, _IOMA_):\n\n_Tu elección quedará guardada como tu cobertura predeterminada._`
+        );
+      }
+
+      if (cleanInput === '3' || ['particular', 'sin obra social'].includes(lowerInput)) {
+        session.cobertura = {
+          tipo: 'particular',
+          obra_social_id: null,
+          plan_id: null,
+          nombre: 'Particular'
+        };
+        return await solicitarMotivoConsulta(phone, session);
+      }
+
+      return await sendWhatsAppMessage(
+        phone,
+        '⚠️ Opción no válida. Respondé *1* para continuar con tu cobertura registrada, *2* para cambiarla o *3* para Particular:'
+      );
+    }
+
+    // CASO B: Paciente sin obra social registrada previamente
     if (cleanInput === '1') {
+      session.step = 'AWAIT_OS_SEARCH';
+      return await sendWhatsAppMessage(
+        phone,
+        `🔎 *Búsqueda de Obra Social o Prepaga*\n\nPor favor, escribí el *nombre* de tu mutual o prepaga (ej: _OSDE_, _Swiss Medical_, _PAMI_, _IOMA_):\n\n_Tu elección quedará guardada como tu cobertura predeterminada._`
+      );
+    }
+
+    if (cleanInput === '2' || ['particular'].includes(lowerInput)) {
       session.cobertura = {
         tipo: 'particular',
         obra_social_id: null,
@@ -688,32 +1071,9 @@ _Luego de completar tu registro, regresá a este chat y escribí *menu* o *hola*
       return await solicitarMotivoConsulta(phone, session);
     }
 
-    if (cleanInput === '2' && session.pacienteObraNombre) {
-      session.cobertura = {
-        tipo: 'obra_social',
-        obra_social_id: session.paciente.obra_social_id,
-        plan_id: session.paciente.plan_id || null,
-        nombre: session.pacienteObraNombre
-      };
-
-      if (session.paciente.plan_id) {
-        return await solicitarMotivoConsulta(phone, session);
-      } else {
-        return await iniciarSeleccionPlan(phone, session, session.paciente.obra_social_id, session.pacienteObraNombre);
-      }
-    }
-
-    if ((cleanInput === '2' && !session.pacienteObraNombre) || cleanInput === '3') {
-      session.step = 'AWAIT_OS_SEARCH';
-      return await sendWhatsAppMessage(
-        phone,
-        `🔎 *Búsqueda de Obra Social o Prepaga*\n\nPor favor, escribí el *nombre* de tu mutual o prepaga (ej: _OSDE_, _Swiss Medical_, _PAMI_, _IOMA_):\n\n_O escribí *particular* si preferís atención particular._`
-      );
-    }
-
     return await sendWhatsAppMessage(
       phone,
-      '⚠️ Opción no válida. Por favor respondé con el número correspondiente a tu cobertura:'
+      '⚠️ Opción no válida. Por favor respondé *1* para Obra Social o *2* para Particular:'
     );
   }
 
@@ -795,6 +1155,20 @@ _Luego de completar tu registro, regresá a este chat y escribí *menu* o *hola*
       plan_id: chosenPlan.id || null,
       nombre: `${session.selectedOSNombre} (${chosenPlan.nombre})`
     };
+
+    // Actualizar inmediatamente la cobertura predeterminada en el perfil del paciente
+    if (session.paciente?.id) {
+      try {
+        await pool.query(
+          'UPDATE usuarios SET obra_social_id = ?, plan_id = ? WHERE id = ?',
+          [session.selectedOSId, chosenPlan.id || null, session.paciente.id]
+        );
+        session.paciente.obra_social_id = session.selectedOSId;
+        session.paciente.plan_id = chosenPlan.id || null;
+      } catch (err) {
+        console.warn('Error actualizando obra social predeterminada en usuarios:', err.message);
+      }
+    }
 
     return await solicitarMotivoConsulta(phone, session);
   }
@@ -1160,12 +1534,25 @@ Respondé:
 }
 
 /**
- * Inicia la selección de fechas disponibles para el médico
+ * Inicia la selección de fechas disponibles para el médico con soporte de paginación
  */
-async function iniciarSeleccionFecha(phone, session) {
+async function iniciarSeleccionFecha(phone, session, offset = 0) {
   try {
-    const fechas = await calcularProximasFechas(session.medico.id, 6);
+    const fechas = await calcularProximasFechas(session.medico.id, 5, offset);
+    session.fechasOffset = offset;
+    session.fechasHasMore = Boolean(fechas.hasMore);
+    session.medicoMaxDias = fechas.maxDias || 30;
+
     if (fechas.length === 0) {
+      if (offset > 0) {
+        const noMas = await getBotMessage(
+          'no_mas_turnos_disponibles',
+          'ℹ️ No hay más fechas disponibles dentro del período habilitado de agenda ({max_dias} días). Escribí el número de alguna de las fechas anteriores o *menu* para reiniciar.',
+          { max_dias: session.medicoMaxDias }
+        );
+        return await sendWhatsAppMessage(phone, noMas);
+      }
+
       session.step = 'INIT';
       return await sendWhatsAppMessage(
         phone,
@@ -1180,7 +1567,12 @@ async function iniciarSeleccionFecha(phone, session) {
     fechas.forEach((f, idx) => {
       msg += `*${idx + 1}* - ${f.fechaTexto} (${formatearFechaCorta(f.fecha)})\n`;
     });
-    msg += `\n_O escribí *menu* para cancelar._`;
+
+    msg += `\n¿Te sirve alguna de estas fechas o querés ver posteriores?`;
+    if (session.fechasHasMore) {
+      msg += `\n*6* - ⏩ Ver más fechas posteriores`;
+    }
+    msg += `\n*0* - ❌ Volver al menú principal\n_O escribí *menu* para reiniciar._`;
 
     return await sendWhatsAppMessage(phone, msg);
   } catch (err) {
@@ -1191,7 +1583,7 @@ async function iniciarSeleccionFecha(phone, session) {
 }
 
 /**
- * Pregunta el tipo de cobertura médica
+ * Pregunta el tipo de cobertura médica reconociendo la predeterminada del paciente
  */
 async function iniciarSeleccionCobertura(phone, session) {
   session.step = 'AWAIT_COVERAGE_SELECTION';
@@ -1203,11 +1595,19 @@ async function iniciarSeleccionCobertura(phone, session) {
   const partText = honorariosMonto ? `Particular (Honorarios: $${honorariosMonto.toLocaleString('es-AR')})` : 'Particular';
 
   let pacienteObraNombre = null;
+  let pacientePlanNombre = null;
+
   if (session.paciente?.obra_social_id) {
     try {
       const [osRows] = await pool.query('SELECT nombre FROM obras_sociales WHERE id = ?', [session.paciente.obra_social_id]);
       if (osRows.length > 0) {
         pacienteObraNombre = osRows[0].nombre;
+      }
+      if (session.paciente.plan_id) {
+        const [plRows] = await pool.query('SELECT nombre FROM planes_obras_sociales WHERE id = ?', [session.paciente.plan_id]);
+        if (plRows.length > 0) {
+          pacientePlanNombre = plRows[0].nombre;
+        }
       }
     } catch (e) {
       console.warn(e);
@@ -1215,21 +1615,26 @@ async function iniciarSeleccionCobertura(phone, session) {
   }
 
   session.pacienteObraNombre = pacienteObraNombre;
+  session.pacientePlanNombre = pacientePlanNombre;
 
-  let msg = `💳 *Cobertura médica para la consulta:*\n\nRespondé con una opción:\n\n*1* - ${partText}\n`;
+  // Si ya tiene una obra social guardada en su perfil
   if (pacienteObraNombre) {
-    msg += `*2* - Mi obra social registrada: *${pacienteObraNombre}*\n`;
-    msg += `*3* - Otra obra social o prepaga\n`;
-  } else {
-    msg += `*2* - Con Obra Social o Prepaga\n`;
+    const planInfo = pacientePlanNombre ? `(Plan: ${pacientePlanNombre})` : '';
+    const prompt = await getBotMessage(
+      'cobertura_predeterminada_prompt',
+      `💳 *Cobertura médica para la consulta:*\n\nTu cobertura registrada es:\n👉 *{obra_social}* {plan_info}\n\n¿Deseás utilizar esta cobertura?\n*1* - ✅ Sí, continuar con {obra_social}\n*2* - 🔄 Cambiar por otra obra social o prepaga\n*3* - 💵 ${partText}\n\n_O escribí *menu* para cancelar._`,
+      { obra_social: pacienteObraNombre, plan_info: planInfo }
+    );
+    return await sendWhatsAppMessage(phone, prompt);
   }
-  msg += `\n_O escribí *menu* para cancelar._`;
 
+  // Si no tiene obra social previa
+  let msg = `💳 *Cobertura médica para la consulta:*\n\nRespondé con una opción:\n\n*1* - Con Obra Social o Prepaga\n*2* - ${partText}\n\n_O escribí *menu* para cancelar._`;
   return await sendWhatsAppMessage(phone, msg);
 }
 
 /**
- * Inicia la selección de planes de la obra social
+ * Inicia la selección de planes de la obra social y persiste la elección en el perfil
  */
 async function iniciarSeleccionPlan(phone, session, osId, osNombre) {
   session.selectedOSId = osId;
@@ -1238,12 +1643,27 @@ async function iniciarSeleccionPlan(phone, session, osId, osNombre) {
   try {
     const planes = await getPlanes(osId);
     if (!planes || planes.length <= 1) {
+      const chosenPlanId = planes?.[0]?.id || null;
       session.cobertura = {
         tipo: 'obra_social',
         obra_social_id: osId,
-        plan_id: planes?.[0]?.id || null,
+        plan_id: chosenPlanId,
         nombre: `${osNombre}${planes?.[0]?.nombre ? ` (${planes[0].nombre})` : ''}`
       };
+
+      if (session.paciente?.id) {
+        try {
+          await pool.query(
+            'UPDATE usuarios SET obra_social_id = ?, plan_id = ? WHERE id = ?',
+            [osId, chosenPlanId, session.paciente.id]
+          );
+          session.paciente.obra_social_id = osId;
+          session.paciente.plan_id = chosenPlanId;
+        } catch (e) {
+          console.warn('Error guardando obra social predeterminada:', e.message);
+        }
+      }
+
       return await solicitarMotivoConsulta(phone, session);
     }
 
@@ -1337,3 +1757,8 @@ module.exports = router;
 module.exports.sendWhatsAppMessage = sendWhatsAppMessage;
 module.exports.getBotMessage = getBotMessage;
 module.exports.userSessions = userSessions;
+module.exports.notificarSuspensionPacientes = notificarSuspensionPacientes;
+module.exports.normalizarFonetica = normalizarFonetica;
+module.exports.calcularSimilitud = calcularSimilitud;
+module.exports.puntuarMedico = puntuarMedico;
+module.exports.mostrarSlotsPaginados = mostrarSlotsPaginados;

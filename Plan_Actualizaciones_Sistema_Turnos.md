@@ -158,3 +158,37 @@ Que la última obra social seleccionada por el paciente en la web o en WhatsApp 
   - Formato argentino: `DD/MM/AAAA`.
   - Zona horaria: `America/Argentina/Buenos_Aires` (UTC-3).
 - **Charset MySQL**: Siempre `utf8mb4` (`utf8mb4_unicode_ci`) para soportar emojis sin truncamiento.
+
+---
+
+## 7. Estado de Implementación y Despliegue en Producción (Octubre 2026)
+
+### ✅ Requerimientos Implementados y Validados:
+1. **Paginación de Turnos Disponibles**:
+   - `calcularProximasFechas(medicoId, 5, offset)` con soporte de `offset`, límite `dias_antelacion_agenda`, y navegación con `6 - Ver más fechas` y `0 - Volver`.
+   - `mostrarSlotsPaginados` con bloques de 5 horarios, opción `6 - Ver más horarios` y `0 - Cambiar fecha`.
+2. **Búsqueda Fonética y Difusa (Fuzzy Search)**:
+   - Normalización fonética (`normalizarFonetica`) adaptada a grafemas del español (`b/v`, `c/k/qu`, `s/z/c`, `y/i`, etc.).
+   - Algoritmo de similitud Levenshtein (`calcularSimilitud` y `puntuarMedico`).
+   - Sugerencias inteligentes (*"¿Quisiste decir...?"*) para coincidencias $\ge 55\%$ con plantilla `sugerencia_medico_fuzzy`.
+3. **Aviso Automático de Cancelación Médica con Reprogramación**:
+   - Integrado en `POST /api/medico/suspensiones` (`server/routes/medico.js`).
+   - Función asíncrona `notificarSuspensionPacientes(afectados, motivo)` con control de rate limit (800ms) vía WhatsApp Cloud API.
+   - Estado `AWAIT_RESCHEDULE_CHOICE` (`1: Reprogramar / 2: Cancelar`).
+4. **Obra Social Dinámica Predeterminada**:
+   - Actualización automática en `usuarios` (`obra_social_id`, `plan_id`) al agendar o modificar cobertura tanto en la Web (`/public/agendar` y `crearTurno`) como en WhatsApp (`iniciarSeleccionCobertura` y `AWAIT_COVERAGE_SELECTION`).
+5. **Plantillas en Base de Datos**:
+   - Archivo `update_mejoras_octubre.sql` creado con todas las claves requeridas para `bot_respuestas`.
+
+---
+
+### 🚀 Pasos para Actualizar en el Servidor VPS (`62.84.179.78`):
+Una vez pusheados los cambios a GitHub (`git push origin main`), ejecutar en la consola del servidor:
+
+```bash
+cd /www/wwwroot/oscarsoft.com.ar/turnos # o directorio del proyecto en VPS
+git pull origin main
+mysql -u root -p oscarsoft_turnos < update_mejoras_octubre.sql
+npm run client:build
+pm2 restart turnos-backend
+```

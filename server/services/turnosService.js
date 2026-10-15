@@ -403,6 +403,14 @@ async function crearTurno(datos, usuarioLogueadoId = null) {
       }
     }
 
+    // Si el paciente ya estaba registrado/autenticado, actualizar siempre su cobertura predeterminada
+    if (pacienteId) {
+      await connection.query(
+        'UPDATE usuarios SET obra_social_id = ?, plan_id = ? WHERE id = ?',
+        [finalObraSocialId, finalPlanId, pacienteId]
+      );
+    }
+
     // Calcular hora_fin si no fue provista (por defecto +30 min)
     let calculatedHoraFin = hora_fin;
     if (!calculatedHoraFin) {
@@ -547,17 +555,26 @@ function formatearTurnoCompleto(fechaInput, horaInput) {
 }
 
 /**
- * Calcula las próximas fechas disponibles para un médico según sus horarios semanales
- * y topes de antelación / apertura de agenda.
+ * Calcula las próximas fechas disponibles para un médico según sus horarios semanales,
+ * topes de antelación / apertura de agenda, con soporte de paginación (offset).
+ * Devuelve un Array que incluye además .hasMore, .maxDias y .nextOffset.
  */
-async function calcularProximasFechas(medicoId, cantidad = 6) {
+async function calcularProximasFechas(medicoId, cantidad = 5, offset = 0) {
   const medico = await getMedicoDetalle(medicoId);
-  if (!medico || !medico.horarios || medico.horarios.length === 0) return [];
+  const resFechas = [];
+  resFechas.hasMore = false;
+  resFechas.maxDias = 30;
+  resFechas.nextOffset = 0;
+
+  if (!medico || !medico.horarios || medico.horarios.length === 0) return resFechas;
+
+  const maxDias = await getMaxDiasAgenda(medico);
+  resFechas.maxDias = maxDias;
 
   // Verificar si la agenda está cerrada por dia_apertura_agenda
   if (medico.dia_apertura_agenda && Number(medico.dia_apertura_agenda) > 0) {
     if (diaDelMesArgentina() < Number(medico.dia_apertura_agenda)) {
-      return [];
+      return resFechas;
     }
   }
 
@@ -565,9 +582,7 @@ async function calcularProximasFechas(medicoId, cantidad = 6) {
     medico.horarios.map(h => (h.dia_semana || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim())
   );
 
-  const maxDias = await getMaxDiasAgenda(medico);
   const hoyStr = hoyArgentina();
-  const resFechas = [];
 
   // Obtener fechas suspendidas
   const [suspList] = await pool.query(
@@ -575,7 +590,10 @@ async function calcularProximasFechas(medicoId, cantidad = 6) {
     [medicoId, hoyStr]
   );
 
-  for (let i = 1; i <= maxDias && resFechas.length < cantidad; i++) {
+  let matchIndex = 0;
+  let hasMore = false;
+
+  for (let i = 1; i <= maxDias; i++) {
     const fStr = sumarDias(hoyStr, i);
 
     // Saltear si la fecha cae en un período suspendido
@@ -591,16 +609,27 @@ async function calcularProximasFechas(medicoId, cantidad = 6) {
     const diaNorm = DIAS_KEYS[dayOfWeek];
 
     if (diasAtencion.has(diaNorm)) {
-      resFechas.push({
-        fecha: fStr,
-        fechaTexto: formatearFechaTexto(fStr),
-        diaSemana: DIAS_MAP[dayOfWeek]
-      });
+      if (matchIndex >= offset) {
+        if (resFechas.length < cantidad) {
+          resFechas.push({
+            fecha: fStr,
+            fechaTexto: formatearFechaTexto(fStr),
+            diaSemana: DIAS_MAP[dayOfWeek]
+          });
+        } else {
+          hasMore = true;
+          break;
+        }
+      }
+      matchIndex++;
     }
   }
 
+  resFechas.hasMore = hasMore;
+  resFechas.nextOffset = offset + resFechas.length;
   return resFechas;
 }
+
 
 module.exports = {
   ServiceError,
