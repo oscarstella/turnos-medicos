@@ -256,6 +256,21 @@ async function getDisponibilidad(medicoId, fecha) {
     };
   }
 
+  // Verificar si la fecha es feriado nacional activo
+  const [feriadoRows] = await pool.query(
+    'SELECT nombre FROM feriados WHERE fecha = ? AND activo = 1 LIMIT 1',
+    [fecha]
+  );
+  if (feriadoRows.length > 0) {
+    return {
+      status: 'success',
+      feriado: true,
+      motivo_feriado: feriadoRows[0].nombre,
+      slots: [],
+      message: `El día seleccionado es feriado nacional (${feriadoRows[0].nombre}). No hay atención médica habitual.`
+    };
+  }
+
   const targetDate = new Date(fecha + 'T12:00:00Z');
   const diaNombre = DIAS_MAP[targetDate.getUTCDay()];
 
@@ -354,6 +369,15 @@ async function crearTurno(datos, usuarioLogueadoId = null) {
       throw new ServiceError(400, `No es posible agendar: La atención se encuentra suspendida por el profesional${suspRows[0].motivo ? ` (${suspRows[0].motivo})` : ''}.`);
     }
 
+    // Verificar si la fecha es feriado nacional activo
+    const [feriadoBlock] = await connection.query(
+      'SELECT nombre FROM feriados WHERE fecha = ? AND activo = 1 LIMIT 1',
+      [fecha]
+    );
+    if (feriadoBlock.length > 0) {
+      throw new ServiceError(400, `No es posible agendar turnos en días feriados (${feriadoBlock[0].nombre}).`);
+    }
+
     let pacienteId = usuarioLogueadoId || null;
     const finalObraSocialId = (obra_social_id === 'particular' || !obra_social_id) ? null : parseInt(obra_social_id, 10);
     const finalPlanId = finalObraSocialId && plan_id ? parseInt(plan_id, 10) : null;
@@ -450,7 +474,7 @@ async function crearTurno(datos, usuarioLogueadoId = null) {
       `INSERT INTO turnos (
         medico_id, paciente_id, especialidad_id, obra_social_id, plan_id, unidad_id,
         fecha, hora_inicio, hora_fin, estado, notas
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmado', ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'asignado', ?)`,
       [
         medico_id,
         pacienteId,
@@ -590,6 +614,13 @@ async function calcularProximasFechas(medicoId, cantidad = 5, offset = 0) {
     [medicoId, hoyStr]
   );
 
+  // Obtener feriados activos
+  const [feriadosList] = await pool.query(
+    'SELECT DATE_FORMAT(fecha, "%Y-%m-%d") as fecha FROM feriados WHERE activo = 1 AND fecha >= ?',
+    [hoyStr]
+  );
+  const feriadosSet = new Set(feriadosList.map(f => f.fecha));
+
   let matchIndex = 0;
   let hasMore = false;
 
@@ -599,6 +630,9 @@ async function calcularProximasFechas(medicoId, cantidad = 5, offset = 0) {
     // Saltear si la fecha cae en un período suspendido
     const estaSuspendida = suspList.some(s => fStr >= s.fecha_inicio && fStr <= s.fecha_fin);
     if (estaSuspendida) continue;
+
+    // Saltear si la fecha cae en un feriado activo
+    if (feriadosSet.has(fStr)) continue;
 
     const [y, m, d] = fStr.split('-').map(Number);
     const dateObj = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));

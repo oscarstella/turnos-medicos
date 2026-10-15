@@ -148,7 +148,7 @@ async function procesarRecordatorios2h(nowArg) {
 
         const msg = await getBotMessage(
           'recordatorio_2h',
-          `⏰ *¡Recordatorio: Tu turno es en 2 horas!*\n\nHola *{paciente_nombre}*, te recordamos que hoy a las ⏰ *{hora} hs* tenés tu turno con el *Dr. {medico_nombre}* ({especialidad}).\n\n📍 *Lugar:* {sede}\n\n_¡Te esperamos puntualmente!_`,
+          `⏰ *¡Recordatorio: Tu turno es en 2 horas!*\n\nHola *{paciente_nombre}*, te recordamos que hoy a las ⏰ *{hora} hs* tenés tu turno con el *Dr. {medico_nombre}* ({especialidad}).\n\n📍 *Lugar:* {sede}\n\n🚗 *¿Estás demorado por el tránsito?* Podés responder directamente a este mensaje indicando tu demora (ej: *'Estoy retrasado 15 minutos'*) y le avisaremos de inmediato al consultorio.\n\n_¡Te esperamos!_`,
           {
             paciente_nombre: t.paciente_nombre,
             medico_nombre: `${t.medico_nombre} ${t.medico_apellido}`.trim(),
@@ -162,6 +162,21 @@ async function procesarRecordatorios2h(nowArg) {
         if (enviado) {
           await pool.query('UPDATE turnos SET recordatorio_2h_enviado = 1 WHERE id = ?', [t.id]);
           console.log(`✅ [CRON 2HS] Alerta enviada a ${phone} para turno #${t.id}`);
+
+          // Configurar sesión para capturar posible aviso de retraso del paciente
+          const digits = String(phone).replace(/\D/g, '');
+          const sessionData = {
+            step: 'AWAIT_2H_PATIENT_REPLY',
+            turnoId: t.id,
+            turno: t,
+            paciente: { id: t.paciente_id, nombre: t.paciente_nombre, apellido: t.paciente_apellido }
+          };
+          userSessions.set(digits, sessionData);
+          if (digits.startsWith('549')) {
+            userSessions.set('54' + digits.slice(3), sessionData);
+          } else if (digits.startsWith('54')) {
+            userSessions.set('549' + digits.slice(2), sessionData);
+          }
         }
       }
     }

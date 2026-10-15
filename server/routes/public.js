@@ -709,7 +709,7 @@ router.post('/agendar', optionalAuth, async (req, res) => {
       `INSERT INTO turnos (
         medico_id, paciente_id, especialidad_id, obra_social_id, plan_id, unidad_id,
         fecha, hora_inicio, hora_fin, estado, notas
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmado', ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'asignado', ?)`,
       [
         medico_id,
         pacienteId,

@@ -34,7 +34,9 @@ import {
   MessageSquare,
   Upload,
   Phone,
-  RefreshCw
+  RefreshCw,
+  Flag,
+  Send
 } from 'lucide-react';
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'];
@@ -197,8 +199,23 @@ export default function DashboardPage() {
   });
   const [botSaving, setBotSaving] = useState(false);
 
-  // Feedback Toast
   const [toastMsg, setToastMsg] = useState('');
+
+  // Mensaje oficial de WhatsApp Médico -> Paciente
+  const [modalTurnoMensaje, setModalTurnoMensaje] = useState(null);
+  const [textoMensajeMedico, setTextoMensajeMedico] = useState('');
+  const [enviandoMensajeMedico, setEnviandoMensajeMedico] = useState(false);
+
+  // Feriados Tab
+  const [feriados, setFeriados] = useState([]);
+  const [loadingFeriados, setLoadingFeriados] = useState(false);
+  const [syncingFeriados, setSyncingFeriados] = useState(false);
+  const [showModalNuevoFeriado, setShowModalNuevoFeriado] = useState(false);
+  const [nuevoFeriadoForm, setNuevoFeriadoForm] = useState({
+    fecha: '',
+    nombre: '',
+    tipo: 'nacional'
+  });
 
   const showToast = (msg) => {
     setToastMsg(msg);
@@ -946,7 +963,99 @@ export default function DashboardPage() {
     if (activeTab === 'bot' && !isDoctor) {
       fetchBotRespuestas();
     }
+    if (activeTab === 'feriados' && !isDoctor) {
+      fetchFeriados();
+    }
   }, [activeTab]);
+
+  const handleOpenMensajeMedico = (turno) => {
+    setModalTurnoMensaje(turno);
+    setTextoMensajeMedico('');
+  };
+
+  const handleEnviarMensajeMedico = async () => {
+    if (!modalTurnoMensaje || !textoMensajeMedico.trim()) return;
+    setEnviandoMensajeMedico(true);
+    try {
+      const res = await api.post(`/medico/turnos/${modalTurnoMensaje.id}/mensaje-paciente`, {
+        mensaje: textoMensajeMedico.trim()
+      });
+      showToast(res.data?.message || 'Mensaje enviado al paciente vía WhatsApp exitosamente.');
+      setModalTurnoMensaje(null);
+      setTextoMensajeMedico('');
+      fetchTurnos();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error al enviar mensaje vía WhatsApp.');
+    } finally {
+      setEnviandoMensajeMedico(false);
+    }
+  };
+
+  const fetchFeriados = async (year = new Date().getFullYear()) => {
+    setLoadingFeriados(true);
+    try {
+      const res = await api.get(`/admin/feriados?year=${year}`);
+      setFeriados(res.data?.data || []);
+    } catch (err) {
+      console.error('Error al cargar feriados:', err);
+    } finally {
+      setLoadingFeriados(false);
+    }
+  };
+
+  const handleSincronizarFeriados = async () => {
+    setSyncingFeriados(true);
+    try {
+      const res = await api.post('/admin/feriados/sincronizar', { year: new Date().getFullYear() });
+      showToast(res.data?.message || 'Feriados sincronizados exitosamente.');
+      setFeriados(res.data?.data || []);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error al sincronizar feriados.');
+    } finally {
+      setSyncingFeriados(false);
+    }
+  };
+
+  const handleToggleFeriado = async (id, actualActivo) => {
+    try {
+      const nuevoEstado = !actualActivo;
+      const res = await api.patch(`/admin/feriados/${id}/toggle`, { activo: nuevoEstado });
+      showToast(res.data?.message || 'Estado del feriado actualizado.');
+      setFeriados(prev => prev.map(f => f.id === id ? { ...f, activo: nuevoEstado ? 1 : 0 } : f));
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error al modificar estado del feriado.');
+    }
+  };
+
+  const handleCrearFeriado = async (e) => {
+    e.preventDefault();
+    if (!nuevoFeriadoForm.fecha || !nuevoFeriadoForm.nombre.trim()) return;
+    try {
+      await api.post('/admin/feriados', nuevoFeriadoForm);
+      showToast('Feriado agregado exitosamente.');
+      setShowModalNuevoFeriado(false);
+      setNuevoFeriadoForm({ fecha: '', nombre: '', tipo: 'nacional' });
+      fetchFeriados();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error al agregar feriado.');
+    }
+  };
+
+  const handleEliminarFeriado = async (id) => {
+    if (!window.confirm('¿Seguro que deseas eliminar este feriado?')) return;
+    try {
+      await api.delete(`/admin/feriados/${id}`);
+      showToast('Feriado eliminado exitosamente.');
+      setFeriados(prev => prev.filter(f => f.id !== id));
+    } catch (err) {
+      console.error(err);
+      alert('Error al eliminar feriado.');
+    }
+  };
 
   const fetchBotRespuestas = async () => {
     setBotLoading(true);
@@ -1217,6 +1326,7 @@ export default function DashboardPage() {
           { id: 'turnos', label: 'Agenda & Turnos', icon: Calendar, minRole: 'recepcionista' },
           { id: 'medicos', label: 'Médicos & Staff', icon: Users, minRole: 'recepcionista' },
           { id: 'usuarios', label: 'Pacientes & Usuarios', icon: ShieldCheck, minRole: 'recepcionista' },
+          { id: 'feriados', label: 'Feriados y Asuetos', icon: Flag, minRole: 'recepcionista' },
           { id: 'obras', label: 'Obras Sociales & Planes', icon: CreditCard, minRole: 'admin' },
           { id: 'especialidades', label: 'Especialidades', icon: Award, minRole: 'admin' },
           { id: 'sedes', label: 'Sedes y Consultorios', icon: Building2, minRole: 'admin' },
@@ -1346,10 +1456,26 @@ export default function DashboardPage() {
                 <span className="badge badge-primary" style={{ fontSize: '0.8125rem', padding: '6px 12px' }}>
                   Ocupados: <strong>{agendaMeta?.ocupados ?? turnos.filter(t => t.tipo === 'ocupado').length}</strong>
                 </span>
+                <span className="badge" style={{ fontSize: '0.8125rem', padding: '6px 12px', background: 'rgba(245, 158, 11, 0.12)', color: '#d97706', border: '1px solid #f59e0b' }}>
+                  Asignados: <strong>{turnos.filter(t => t.estado === 'asignado').length}</strong>
+                </span>
+                <span className="badge" style={{ fontSize: '0.8125rem', padding: '6px 12px', background: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: '1px solid #10b981' }}>
+                  Confirmados: <strong>{turnos.filter(t => t.estado === 'confirmado').length}</strong>
+                </span>
                 <span className="badge badge-success" style={{ fontSize: '0.8125rem', padding: '6px 12px', background: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: '1px solid #10b981' }}>
                   Vacíos / Disponibles: <strong>{agendaMeta?.libres ?? turnos.filter(t => t.tipo === 'vacio' || t.estado === 'libre').length}</strong>
                 </span>
               </div>
+
+              {agendaMeta?.feriado && (
+                <div style={{ marginTop: '12px', padding: '12px 16px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid #eab308', borderRadius: '8px', color: '#854d0e', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Flag size={20} />
+                  <div>
+                    <div style={{ fontWeight: 800 }}>🇦🇷 Día Feriado Nacional: {agendaMeta.motivo_feriado}</div>
+                    <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>No se agendan turnos regulares en esta fecha.</div>
+                  </div>
+                </div>
+              )}
 
               {agendaMeta?.suspendido && (
                 <div style={{ marginTop: '12px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--color-danger)', borderRadius: '8px', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1426,10 +1552,20 @@ export default function DashboardPage() {
                             </span>
                           ) : (
                             <div>
-                              <div style={{ color: 'var(--color-text-main)' }}>{t.paciente_nombre} {t.paciente_apellido}</div>
+                              <div style={{ color: 'var(--color-text-main)', fontWeight: 700 }}>{t.paciente_nombre} {t.paciente_apellido}</div>
                               {t.notas && (
-                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400, marginTop: '2px' }}>
                                   Nota: {t.notas}
+                                </div>
+                              )}
+                              {t.aviso_retraso && (
+                                <div style={{ marginTop: '6px', padding: '5px 8px', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid #f59e0b', borderRadius: '6px', fontSize: '0.75rem', color: '#b45309', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <span>🚗 <strong>Demora avisada:</strong> "{t.aviso_retraso}"</span>
+                                </div>
+                              )}
+                              {t.mensaje_medico && (
+                                <div style={{ marginTop: '4px', padding: '4px 8px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', borderRadius: '6px', fontSize: '0.75rem', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <span>💬 <strong>Mensaje enviado:</strong> "{t.mensaje_medico}"</span>
                                 </div>
                               )}
                             </div>
@@ -1501,11 +1637,24 @@ export default function DashboardPage() {
                             </span>
                           ) : (
                             <span className={`badge ${
-                              t.estado === 'asistio' ? 'badge-success' :
-                              t.estado === 'ausente' ? 'badge-warning' :
-                              t.estado === 'cancelado' ? 'badge-danger' : 'badge-primary'
-                            }`}>
-                              {t.estado}
+                              t.estado === 'confirmado' ? 'badge-success' :
+                              t.estado === 'asignado' ? 'badge-warning' :
+                              t.estado === 'asistio' ? 'badge-primary' :
+                              t.estado === 'ausente' ? 'badge-secondary' :
+                              t.estado === 'cancelado' ? 'badge-danger' : 'badge-secondary'
+                            }`}
+                            style={{
+                              background: t.estado === 'asignado' ? 'rgba(245, 158, 11, 0.12)' : t.estado === 'confirmado' ? 'rgba(16, 185, 129, 0.12)' : undefined,
+                              color: t.estado === 'asignado' ? '#d97706' : t.estado === 'confirmado' ? '#059669' : undefined,
+                              border: t.estado === 'asignado' ? '1px solid #f59e0b' : t.estado === 'confirmado' ? '1px solid #10b981' : undefined,
+                              fontWeight: 700
+                            }}
+                            >
+                              {t.estado === 'asignado' ? '🟡 Asignado (Pend. 48h)' :
+                               t.estado === 'confirmado' ? '🟢 Confirmado ✅' :
+                               t.estado === 'asistio' ? 'Asistió' :
+                               t.estado === 'ausente' ? 'Ausente' :
+                               t.estado === 'cancelado' ? 'Cancelado' : t.estado}
                             </span>
                           )}
                         </td>
@@ -1516,7 +1665,17 @@ export default function DashboardPage() {
                               Disponible
                             </span>
                           ) : (
-                            <div className="flex justify-end gap-1">
+                            <div className="flex justify-end gap-1" style={{ flexWrap: 'wrap' }}>
+                              {t.paciente_telefono && (
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  title="Enviar mensaje WhatsApp oficial sin mostrar tu teléfono"
+                                  onClick={() => handleOpenMensajeMedico(t)}
+                                  style={{ padding: '4px 8px', background: '#25D366', borderColor: '#25D366', color: '#fff', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 600 }}
+                                >
+                                  <MessageSquare size={13} /> WhatsApp
+                                </button>
+                              )}
                               {t.estado !== 'asistio' && (
                                 <button
                                   className="btn btn-secondary btn-sm"
@@ -3619,6 +3778,117 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* TAB FERIADOS Y ASUETOS NACIONALES */}
+      {activeTab === 'feriados' && !isDoctor && (
+        <div className="card" style={{ padding: '24px' }}>
+          <div className="flex justify-between items-center" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--color-text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Flag size={20} color="#0284c7" /> Gestión Dinámica de Feriados Nacionales y Asuetos
+              </h3>
+              <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+                Los feriados activos se bloquean automáticamente en la agenda médica, la reserva web y el bot de WhatsApp. Podés sincronizar los feriados oficiales de Argentina o agregar y bloquear/desbloquear días en tiempo real.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleSincronizarFeriados}
+                disabled={syncingFeriados}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <RefreshCw size={15} className={syncingFeriados ? 'animate-spin' : ''} />
+                {syncingFeriados ? 'Sincronizando...' : 'Sincronizar Feriados de Argentina'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowModalNuevoFeriado(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Plus size={15} /> Agregar Feriado / Asueto Manual
+              </button>
+            </div>
+          </div>
+
+          {loadingFeriados ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-muted)' }}>
+              Cargando calendario de feriados...
+            </div>
+          ) : feriados.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-muted)' }}>
+              No hay feriados registrados para este año. Hacé clic en "Sincronizar Feriados de Argentina".
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+                <thead style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
+                  <tr>
+                    <th style={{ padding: '12px 14px' }}>Fecha</th>
+                    <th style={{ padding: '12px 14px' }}>Motivo / Nombre Oficial</th>
+                    <th style={{ padding: '12px 14px' }}>Tipo</th>
+                    <th style={{ padding: '12px 14px' }}>Estado en el Sistema</th>
+                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {feriados.map((f) => (
+                    <tr key={f.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <td style={{ padding: '12px 14px', fontWeight: 700, color: 'var(--color-text-main)' }}>
+                        📅 {formatearFechaArg(f.fecha)}
+                      </td>
+                      <td style={{ padding: '12px 14px', fontWeight: 600 }}>
+                        {f.nombre}
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span className="badge badge-secondary" style={{ textTransform: 'capitalize', fontSize: '0.75rem' }}>
+                          {f.tipo || 'nacional'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span
+                          className="badge"
+                          style={{
+                            background: f.activo ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                            color: f.activo ? '#b91c1c' : '#059669',
+                            border: f.activo ? '1px solid #ef4444' : '1px solid #10b981',
+                            fontWeight: 700
+                          }}
+                        >
+                          {f.activo ? '🔒 Bloqueado (Feriado no laborable)' : '🔓 Desbloqueado (Atiende normal)'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            className={`btn btn-sm ${f.activo ? 'btn-secondary' : 'btn-primary'}`}
+                            onClick={() => handleToggleFeriado(f.id, f.activo)}
+                            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                          >
+                            {f.activo ? 'Desbloquear día' : 'Bloquear día'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-danger"
+                            title="Eliminar feriado"
+                            onClick={() => handleEliminarFeriado(f.id)}
+                            style={{ padding: '4px 8px' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* MODAL NUEVO MÉDICO (con Select2 para especialidad) */}
       {showMedicoModal && (
         <div className="modal-overlay">
@@ -4435,6 +4705,172 @@ export default function DashboardPage() {
                   style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                 >
                   <Save size={16} /> {botSaving ? 'Guardando...' : (editingBotId ? 'Actualizar Respuesta' : 'Crear Respuesta')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ENVIAR MENSAJE WHATSAPP MÉDICO -> PACIENTE */}
+      {modalTurnoMensaje && (
+        <div className="modal-overlay">
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '580px' }}>
+            <div className="flex justify-between items-center" style={{ marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MessageSquare size={20} color="#25D366" /> Enviar WhatsApp al Paciente
+              </h3>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => setModalTurnoMensaje(null)}
+                style={{ padding: '4px 8px' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '10px 14px', background: 'rgba(37, 211, 102, 0.08)', border: '1px solid #25D366', borderRadius: '8px', marginBottom: '16px', fontSize: '0.8125rem', color: '#166534' }}>
+              🔒 <strong>Privacidad Total Garantizada:</strong> Tu número celular personal nunca se revelará. El mensaje se enviará a través del WhatsApp oficial verificado de la institución.
+            </div>
+
+            <div style={{ marginBottom: '14px', fontSize: '0.875rem' }}>
+              <div>👤 <strong>Paciente:</strong> {modalTurnoMensaje.paciente_nombre} {modalTurnoMensaje.paciente_apellido} (Tel: {modalTurnoMensaje.paciente_telefono})</div>
+              <div>🗓 <strong>Turno:</strong> {formatearFechaArg(modalTurnoMensaje.fecha)} a las {modalTurnoMensaje.hora_inicio?.substring(0, 5)} hs</div>
+              {modalTurnoMensaje.aviso_retraso && (
+                <div style={{ marginTop: '8px', padding: '6px 10px', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid #f59e0b', borderRadius: '6px', color: '#b45309' }}>
+                  🚗 <strong>Demora avisada por el paciente:</strong> "{modalTurnoMensaje.aviso_retraso}"
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '14px' }}>
+              <label className="form-label" style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
+                Respuestas Rápidas Sugeridas:
+              </label>
+              <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+                {[
+                  '✅ No hay problema, te espero en el consultorio.',
+                  '⏳ Te puedo esperar hasta 15 minutos como máximo.',
+                  '⚠️ Lamentablemente hoy no podré esperarte. Por favor reprogramá tu turno.',
+                  '📍 Por favor al llegar anunciate directamente en recepción.'
+                ].map((txt, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setTextoMensajeMedico(txt)}
+                    style={{ fontSize: '0.75rem', padding: '4px 8px', borderRadius: '6px' }}
+                  >
+                    {txt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '16px' }}>
+              <label className="form-label">Mensaje para el paciente:</label>
+              <textarea
+                className="form-input"
+                rows={4}
+                placeholder="Escribí aquí el mensaje que le llegará al paciente por WhatsApp..."
+                value={textoMensajeMedico}
+                onChange={e => setTextoMensajeMedico(e.target.value)}
+                style={{ resize: 'vertical' }}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setModalTurnoMensaje(null)}
+                disabled={enviandoMensajeMedico}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleEnviarMensajeMedico}
+                disabled={enviandoMensajeMedico || !textoMensajeMedico.trim()}
+                style={{ background: '#25D366', borderColor: '#25D366', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Send size={15} />
+                {enviandoMensajeMedico ? 'Enviando WhatsApp...' : 'Enviar vía Bot WhatsApp'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NUEVO FERIADO MANUAL */}
+      {showModalNuevoFeriado && (
+        <div className="modal-overlay">
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '480px' }}>
+            <div className="flex justify-between items-center" style={{ marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Flag size={20} color="#0284c7" /> Agregar Feriado o Asueto
+              </h3>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => setShowModalNuevoFeriado(false)}
+                style={{ padding: '4px 8px' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCrearFeriado}>
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label">Fecha del Feriado</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  required
+                  value={nuevoFeriadoForm.fecha}
+                  onChange={e => setNuevoFeriadoForm({ ...nuevoFeriadoForm, fecha: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label">Motivo o Nombre</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  required
+                  placeholder="Ej: Asueto Administrativo Local, Día de la Ciudad..."
+                  value={nuevoFeriadoForm.nombre}
+                  onChange={e => setNuevoFeriadoForm({ ...nuevoFeriadoForm, nombre: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label">Tipo</label>
+                <select
+                  className="form-input"
+                  value={nuevoFeriadoForm.tipo}
+                  onChange={e => setNuevoFeriadoForm({ ...nuevoFeriadoForm, tipo: e.target.value })}
+                >
+                  <option value="nacional">Feriado Nacional</option>
+                  <option value="puente">Feriado Puente Turístico</option>
+                  <option value="trasladable">Feriado Trasladable</option>
+                  <option value="asueto">Asueto Administrativo / Local</option>
+                  <option value="manual">Personalizado</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowModalNuevoFeriado(false)}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Guardar y Bloquear Día
                 </button>
               </div>
             </form>

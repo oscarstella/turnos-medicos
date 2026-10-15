@@ -5,7 +5,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const pool = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { notificarSuspensionPacientes } = require('./whatsapp');
+const { notificarSuspensionPacientes, sendWhatsAppMessage } = require('./whatsapp');
 
 router.use(requireAuth);
 router.use(requireRole(['medico', 'admin', 'superadmin']));
@@ -41,9 +41,18 @@ router.get('/agenda', async (req, res) => {
         [medicoId, diaNombre]
       );
 
+      // 2. Verificar feriado nacional activo
+      const [feriadoRows] = await pool.query(
+        'SELECT nombre FROM feriados WHERE fecha = ? AND activo = 1 LIMIT 1',
+        [fecha]
+      );
+      const esFeriado = feriadoRows.length > 0;
+      const motivoFeriado = esFeriado ? feriadoRows[0].nombre : null;
+
       // 3. Turnos reservados para esa fecha
       let turnosSql = `
         SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
+               t.aviso_retraso, t.mensaje_medico,
                p.id as paciente_id, p.nombre as paciente_nombre, p.apellido as paciente_apellido,
                p.dni as paciente_dni, p.telefono as paciente_telefono, p.tiene_whatsapp as paciente_whatsapp,
                p.email as paciente_email,
@@ -187,6 +196,8 @@ router.get('/agenda', async (req, res) => {
           libres: libresCount,
           suspendido,
           motivo_suspension: motivoSuspension,
+          feriado: esFeriado,
+          motivo_feriado: motivoFeriado,
           tiene_bloques: horarios.length > 0
         }
       });
@@ -195,6 +206,7 @@ router.get('/agenda', async (req, res) => {
     // Consulta estándar si no hay fecha puntual o no incluye vacíos
     let query = `
       SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha, t.hora_inicio, t.hora_fin, t.estado, t.notas, t.creado_en,
+             t.aviso_retraso, t.mensaje_medico,
              p.id as paciente_id, p.nombre as paciente_nombre, p.apellido as paciente_apellido,
              p.dni as paciente_dni, p.telefono as paciente_telefono, p.tiene_whatsapp as paciente_whatsapp,
              p.email as paciente_email,
@@ -839,6 +851,67 @@ router.put('/coberturas', async (req, res) => {
     res.status(500).json({ status: 'error', message: 'Error al actualizar coberturas.' });
   } finally {
     connection.release();
+  }
+});
+
+/**
+ * Envía un mensaje de WhatsApp oficial al paciente del turno desde el panel médico
+ * (El médico NO expone su celular privado; el mensaje sale vía Meta Cloud API)
+ */
+router.post('/turnos/:id/mensaje-paciente', async (req, res) => {
+  try {
+    const turnoId = req.params.id;
+    const { mensaje } = req.body;
+    const userId = req.user.id;
+    const userRol = req.user.rol;
+
+    if (!mensaje || !mensaje.trim()) {
+      return res.status(400).json({ status: 'error', message: 'El mensaje no puede estar vacío.' });
+    }
+
+    let query = `
+      SELECT t.id, t.fecha, t.hora_inicio, t.medico_id,
+             p.nombre as paciente_nombre, p.apellido as paciente_apellido, p.telefono as paciente_telefono,
+             m.nombre as medico_nombre, m.apellido as medico_apellido
+      FROM turnos t
+      JOIN usuarios p ON t.paciente_id = p.id
+      JOIN usuarios m ON t.medico_id = m.id
+      WHERE t.id = ?
+    `;
+    const params = [turnoId];
+    if (userRol === 'medico') {
+      query += ' AND t.medico_id = ?';
+      params.push(userId);
+    }
+
+    const [rows] = await pool.query(query, params);
+    if (rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Turno no encontrado o no tiene permisos sobre el mismo.' });
+    }
+
+    const turno = rows[0];
+    if (!turno.paciente_telefono) {
+      return res.status(400).json({ status: 'error', message: 'El paciente no tiene un número de teléfono registrado.' });
+    }
+
+    const horaStr = (turno.hora_inicio || '').substring(0, 5);
+    const textoWhatsApp = `👨‍⚕️ *Mensaje del Dr. ${turno.medico_nombre} ${turno.medico_apellido}* (Turno ${horaStr} hs):\n\n"${mensaje.trim()}"\n\n_Sistema de Turnos OscarSoft_`;
+
+    const enviado = await sendWhatsAppMessage(turno.paciente_telefono, textoWhatsApp);
+    if (!enviado) {
+      return res.status(500).json({ status: 'error', message: 'No se pudo enviar el mensaje por WhatsApp. Verifique la conexión con Meta Cloud API.' });
+    }
+
+    await pool.query('UPDATE turnos SET mensaje_medico = ? WHERE id = ?', [mensaje.trim(), turnoId]);
+
+    res.json({
+      status: 'success',
+      message: 'Mensaje enviado exitosamente al paciente vía WhatsApp.',
+      mensaje_medico: mensaje.trim()
+    });
+  } catch (error) {
+    console.error('Error enviando mensaje al paciente:', error);
+    res.status(500).json({ status: 'error', message: 'Error interno al enviar mensaje.' });
   }
 });
 

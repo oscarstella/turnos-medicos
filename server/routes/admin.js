@@ -967,7 +967,78 @@ router.delete('/bot-respuestas/:id', requireRole(['superadmin', 'admin']), async
     res.json({ status: 'success', message: 'Mensaje del bot eliminado exitosamente.' });
   } catch (error) {
     console.error('Error al eliminar mensaje del bot:', error);
-    res.status(500).json({ status: 'error', message: 'Error al eliminar mensaje del bot.' });
+// =========================================================================
+// GESTIÓN DE FERIADOS NACIONALES Y ASUETOS
+// =========================================================================
+const {
+  getFeriados,
+  sincronizarFeriados,
+  crearFeriado,
+  toggleFeriado,
+  eliminarFeriado
+} = require('../services/feriadosService');
+
+router.get('/feriados', async (req, res) => {
+  try {
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const feriados = await getFeriados(year);
+    res.json({ status: 'success', data: feriados });
+  } catch (error) {
+    console.error('Error al listar feriados:', error);
+    res.status(500).json({ status: 'error', message: 'Error al consultar feriados.' });
+  }
+});
+
+router.post('/feriados/sincronizar', async (req, res) => {
+  try {
+    const year = parseInt(req.body.year, 10) || new Date().getFullYear();
+    const resultado = await sincronizarFeriados(year);
+    const feriados = await getFeriados(year);
+    res.json({ status: 'success', data: feriados, message: resultado.mensaje });
+  } catch (error) {
+    console.error('Error al sincronizar feriados:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Error al sincronizar feriados.' });
+  }
+});
+
+router.post('/feriados', async (req, res) => {
+  try {
+    const { fecha, nombre, tipo } = req.body;
+    if (!fecha || !nombre) {
+      return res.status(400).json({ status: 'error', message: 'Fecha y motivo son obligatorios.' });
+    }
+    const nuevo = await crearFeriado({ fecha, nombre, tipo });
+    res.json({ status: 'success', data: nuevo, message: 'Feriado agregado exitosamente.' });
+  } catch (error) {
+    console.error('Error al crear feriado:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Error al agregar feriado.' });
+  }
+});
+
+router.patch('/feriados/:id/toggle', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { activo } = req.body;
+    const resultado = await toggleFeriado(id, activo);
+    res.json({
+      status: 'success',
+      data: resultado,
+      message: activo ? 'Feriado activado (bloqueado para turnos).' : 'Feriado desactivado (desbloqueado para atención).'
+    });
+  } catch (error) {
+    console.error('Error al actualizar estado de feriado:', error);
+    res.status(500).json({ status: 'error', message: 'Error al cambiar estado de feriado.' });
+  }
+});
+
+router.delete('/feriados/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await eliminarFeriado(id);
+    res.json({ status: 'success', message: 'Feriado eliminado exitosamente.' });
+  } catch (error) {
+    console.error('Error al eliminar feriado:', error);
+    res.status(500).json({ status: 'error', message: 'Error al eliminar feriado.' });
   }
 });
 

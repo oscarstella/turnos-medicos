@@ -571,6 +571,31 @@ async function handleIncomingUserMessage(phone, text) {
   }
 
   // =========================================================================
+  // RESPUESTA A RECORDATORIO DE 2HS (Aviso de retraso / demora del paciente)
+  // =========================================================================
+  if (session.step === 'AWAIT_2H_PATIENT_REPLY') {
+    try {
+      const avisoTexto = cleanInput.length > 250 ? cleanInput.substring(0, 250) : cleanInput;
+      await pool.query("UPDATE turnos SET aviso_retraso = ? WHERE id = ?", [avisoTexto, session.turnoId]);
+      session.step = 'INIT';
+      const medicoNom = session.turno ? `${session.turno.medico_nombre || ''} ${session.turno.medico_apellido || ''}`.trim() : 'profesional';
+      const respAviso = await getBotMessage(
+        'aviso_retraso_recibido',
+        '✅ *Aviso de demora recibido.*\n\nYa notificamos en la agenda del *Dr. {medico_nombre}* que te encontrás demorado con el siguiente mensaje:\n_\"{aviso}\"_\n\n_¡Muchas gracias por avisar!_',
+        {
+          medico_nombre: medicoNom,
+          aviso: avisoTexto
+        }
+      );
+      return await sendWhatsAppMessage(phone, respAviso);
+    } catch (err) {
+      console.error('Error guardando aviso de retraso del paciente:', err);
+      session.step = 'INIT';
+      return await sendWhatsAppMessage(phone, 'Recibido tu mensaje. Podés escribir *menu* para consultar opciones.');
+    }
+  }
+
+  // =========================================================================
   // RESPUESTA A SUSPENSIÓN MÉDICA (1: Reprogramar / 2: Cancelar)
   // =========================================================================
   if (session.step === 'AWAIT_RESCHEDULE_CHOICE') {

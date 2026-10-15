@@ -27,8 +27,19 @@ async function ensureSchema() {
       );
       console.log('✅ Columna username agregada a usuarios exitosamente.');
     }
+
+    const [turnoCols] = await pool.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'turnos' AND COLUMN_NAME IN ('aviso_retraso', 'mensaje_medico')`
+    );
+    const existingTurnoCols = turnoCols.map(c => c.COLUMN_NAME);
+    if (!existingTurnoCols.includes('aviso_retraso')) {
+      await pool.query(`ALTER TABLE turnos ADD COLUMN aviso_retraso VARCHAR(255) NULL DEFAULT NULL AFTER notas`);
+    }
+    if (!existingTurnoCols.includes('mensaje_medico')) {
+      await pool.query(`ALTER TABLE turnos ADD COLUMN mensaje_medico VARCHAR(255) NULL DEFAULT NULL AFTER aviso_retraso`);
+    }
   } catch (err) {
-    console.warn('ℹ️ Inicialización schema (username):', err.message);
+    console.warn('ℹ️ Inicialización schema:', err.message);
   }
 }
 
