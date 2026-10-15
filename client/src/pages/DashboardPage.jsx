@@ -275,9 +275,15 @@ export default function DashboardPage() {
 
   const fetchCatalogos = () => {
     api.get('/public/especialidades').then(res => setEspecialidades(res.data || [])).catch(() => {
-      api.get('/admin/especialidades').then(res => setEspecialidades(res.data || [])).catch(console.error);
+      if (!isDoctor) {
+        api.get('/admin/especialidades').then(res => setEspecialidades(res.data || [])).catch(console.error);
+      }
     });
-    api.get('/admin/unidades').then(res => setSedes(res.data || [])).catch(console.error);
+    api.get('/public/unidades').then(res => setSedes(res.data || [])).catch(() => {
+      if (!isDoctor) {
+        api.get('/admin/unidades').then(res => setSedes(res.data || [])).catch(console.error);
+      }
+    });
   };
 
   const fetchUsuarios = () => {
