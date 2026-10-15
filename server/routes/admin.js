@@ -967,6 +967,10 @@ router.delete('/bot-respuestas/:id', requireRole(['superadmin', 'admin']), async
     res.json({ status: 'success', message: 'Mensaje del bot eliminado exitosamente.' });
   } catch (error) {
     console.error('Error al eliminar mensaje del bot:', error);
+    res.status(500).json({ status: 'error', message: 'Error al eliminar mensaje del bot.' });
+  }
+});
+
 // =========================================================================
 // GESTIÓN DE FERIADOS NACIONALES Y ASUETOS
 // =========================================================================
