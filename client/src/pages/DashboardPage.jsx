@@ -5,6 +5,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import TimeInput24 from '../components/TimeInput24';
 import DurationPicker5Min from '../components/DurationPicker5Min';
 import { obtenerAvatarDefault } from '../utils/avatar';
+import DoctorAgendaView from '../components/DoctorAgendaView';
 import { 
   Users, 
   Calendar, 
@@ -1325,7 +1326,6 @@ export default function DashboardPage() {
           { id: 'turnos', label: 'Mi Agenda y Turnos', icon: Calendar },
           { id: 'ficha', label: 'Mi Ficha & Perfil', icon: Sparkles },
           { id: 'horarios', label: 'Mis Horarios de Atención', icon: Clock },
-          { id: 'suspensiones', label: 'Suspensión de Turnos', icon: AlertTriangle },
           { id: 'coberturas', label: 'Mis Obras Sociales y Coberturas', icon: CreditCard },
           { id: 'link', label: 'Mi Enlace Directo', icon: Eye }
         ] : [
@@ -1365,9 +1365,18 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* TAB 1: AGENDA Y TURNOS (con Select2 para médico, sede y estado) */}
+      {/* TAB 1: AGENDA Y TURNOS */}
       {activeTab === 'turnos' && (
-        <div className="card" style={{ padding: '24px' }}>
+        isDoctor ? (
+          <DoctorAgendaView
+            user={user}
+            horariosBloques={horariosBloques}
+            sedes={sedes}
+            onUpdateEstado={handleUpdateEstadoTurno}
+            showToast={showToast}
+          />
+        ) : (
+          <div className="card" style={{ padding: '24px' }}>
           
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3" style={{ marginBottom: '20px', alignItems: 'flex-end' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1724,6 +1733,7 @@ export default function DashboardPage() {
           )}
 
         </div>
+        )
       )}
 
       {/* VISTA DOCTOR: MI PERFIL, FICHA & HONORARIOS */}

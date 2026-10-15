@@ -623,9 +623,10 @@ async function calcularProximasFechas(medicoId, cantidad = 5, offset = 0) {
 
   let matchIndex = 0;
   let hasMore = false;
+  const horaActual = horaArgentina();
 
-  for (let i = 1; i <= maxDias; i++) {
-    const fStr = sumarDias(hoyStr, i);
+  for (let i = 0; i <= maxDias; i++) {
+    const fStr = i === 0 ? hoyStr : sumarDias(hoyStr, i);
 
     // Saltear si la fecha cae en un período suspendido
     const estaSuspendida = suspList.some(s => fStr >= s.fecha_inicio && fStr <= s.fecha_fin);
@@ -643,6 +644,19 @@ async function calcularProximasFechas(medicoId, cantidad = 5, offset = 0) {
     const diaNorm = DIAS_KEYS[dayOfWeek];
 
     if (diasAtencion.has(diaNorm)) {
+      // Si la fecha evaluada es hoy, verificar que queden turnos libres posteriores a la hora actual
+      if (i === 0) {
+        try {
+          const dispHoy = await getDisponibilidad(medicoId, hoyStr);
+          const hayDisponibles = (dispHoy.slots || []).some(s => s.disponible && s.hora_inicio > horaActual);
+          if (!hayDisponibles) {
+            continue; // Si hoy no quedan turnos disponibles en el horario restante, pasar a los días siguientes
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
       if (matchIndex >= offset) {
         if (resFechas.length < cantidad) {
           resFechas.push({
